@@ -1,0 +1,27 @@
+@echo off
+REM ============================================================
+REM HTMLツールを最新版に更新するバッチファイル
+REM
+REM 使い方:
+REM 1. このファイルの拡張子を .bat に変更（update.bat.template → update.bat）
+REM 2. 下の SOURCE / DEST を自分の環境のパスに書き換える
+REM 3. このファイルをダブルクリックで実行
+REM ============================================================
+
+REM ▼ ここを書き換える ▼
+REM SOURCE: ダウンロードしたパッケージのHTMLのパス
+set "SOURCE=D:\Downloads\package\youtube_analytics_dashboard.html"
+
+REM DEST: 実際に使っているHTMLのパス（デスクトップショートカットが指す場所）
+set "DEST=C:\fmkk\youtube_analytics_dashboard.html"
+
+REM ▲ ここまで書き換える ▲
+
+echo HTMLを最新版に更新中...
+copy /Y "%SOURCE%" "%DEST%"
+if errorlevel 1 (
+  echo ❌ 更新失敗。パスを確認してください。
+) else (
+  echo ✅ 更新完了！
+)
+pause

@@ -1,0 +1,10 @@
+# Claude Code のローカル設定（アップロード不要）
+.claude/
+
+# OS が生成するファイル
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 実運用ファイル（テンプレートから生成されるもの）
+update.bat

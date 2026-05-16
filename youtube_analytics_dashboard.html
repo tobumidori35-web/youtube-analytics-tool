@@ -1,0 +1,1934 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>YouTubeアナリティクス分析ツール</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Yu Gothic", "Meiryo", sans-serif;
+    background: #f4f1ea; color: #2a2a2a; margin: 0;
+    padding: 20px; max-width: 1400px; margin: 0 auto;
+  }
+  h1 { color: #8b0000; border-bottom: 3px solid #8b0000; padding-bottom: 8px; }
+  h2 { color: #4a4a4a; margin-top: 30px; border-left: 5px solid #8b0000; padding-left: 10px; }
+  h3 { color: #555; }
+
+  .upload-zone {
+    border: 3px dashed #8b0000; background: white; padding: 30px;
+    text-align: center; border-radius: 8px; margin: 20px 0;
+    transition: background 0.2s;
+  }
+  .upload-zone.dragover { background: #ffe; }
+  .upload-zone input[type=file] { margin-top: 10px; }
+  .upload-status { margin-top: 12px; font-size: 14px; }
+  .upload-status .ok { color: #2a7; }
+  .upload-status .ng { color: #c33; }
+
+  .tabs { display: flex; gap: 4px; margin-top: 20px; border-bottom: 2px solid #8b0000; flex-wrap: wrap; }
+  .tab {
+    padding: 10px 18px; background: #ddd; cursor: pointer; border: none;
+    font-size: 14px; font-weight: bold; border-radius: 6px 6px 0 0;
+  }
+  .tab.active { background: #8b0000; color: white; }
+  .panel { display: none; padding: 20px 0; }
+  .panel.active { display: block; }
+
+  .stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px; margin: 16px 0;
+  }
+  .stat-card {
+    background: white; padding: 14px; border-radius: 8px;
+    border-left: 5px solid #8b0000;
+  }
+  .stat-card .label { font-size: 12px; color: #888; }
+  .stat-card .value { font-size: 22px; font-weight: bold; color: #8b0000; }
+  .stat-card .sub { font-size: 11px; color: #aaa; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; background: white; font-size: 12px; }
+  th, td { padding: 6px 8px; border: 1px solid #ddd; text-align: left; }
+  th { background: #8b0000; color: white; cursor: pointer; user-select: none; position: sticky; top: 0; }
+  th:hover { background: #a52a2a; }
+  tr:nth-child(even) td { background: #faf8f3; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .table-wrap { max-height: 600px; overflow: auto; border: 1px solid #ddd; border-radius: 6px; }
+
+  .filters {
+    display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; align-items: center;
+    background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;
+  }
+  .filters input, .filters select { padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+
+  .chart-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0;
+  }
+  @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+  .chart-box {
+    background: white; padding: 14px; border-radius: 8px; border: 1px solid #ddd;
+  }
+  .chart-box h3 { margin-top: 0; font-size: 14px; }
+  canvas { max-height: 320px; }
+
+  .insight-card {
+    background: white; padding: 16px 20px; border-radius: 8px;
+    border-left: 5px solid #d4a017; margin: 12px 0;
+  }
+  .insight-card.critical { border-left-color: #c33; }
+  .insight-card.good { border-left-color: #2a7; }
+  .insight-card .title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 6px; }
+  .insight-card .reason { font-size: 13px; color: #555; line-height: 1.7; }
+  .insight-card .data { font-size: 12px; color: #888; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #ddd; }
+  .insight-card .action { font-size: 13px; color: #8b0000; font-weight: bold; margin-top: 8px; }
+
+  .empty { color: #999; padding: 40px; text-align: center; font-style: italic; }
+  details summary { cursor: pointer; padding: 8px; background: #eee; border-radius: 4px; font-weight: bold; }
+
+  button.primary {
+    background: #8b0000; color: white; border: none; padding: 8px 14px;
+    font-size: 13px; border-radius: 4px; cursor: pointer;
+  }
+  button.primary:hover { background: #a52a2a; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+  .badge-good { background: #d4f1d4; color: #2a7; }
+  .badge-bad { background: #f8d4d4; color: #c33; }
+  .badge-mid { background: #f0e8c8; color: #8b6500; }
+</style>
+</head>
+<body>
+
+<h1>📊 <span id="channelTitle">YouTubeチャンネル</span> - アナリティクス分析ツール</h1>
+<p style="color:#666">YouTube Studioのデータを自動取得して分析。AI戦略アドバイザーが具体的な改善案を生成します。</p>
+
+<div class="upload-zone" id="dropZone">
+  <strong>🔗 Apps Scriptから自動取得（推奨）</strong>
+  <div style="margin:10px 0; display:flex; gap:8px; justify-content:center; flex-wrap:wrap">
+    <input type="text" id="appsScriptUrl" placeholder="Apps ScriptウェブアプリのURLを貼り付け" style="width:60%; padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px">
+    <button class="primary" onclick="fetchFromAppsScript()">📥 取得</button>
+    <button class="primary" style="background:#555" onclick="autoLoadAppsScript()" id="autoBtn">🔄 自動更新ON/OFF</button>
+  </div>
+  <div id="appsScriptStatus" style="font-size:12px; color:#666"></div>
+  <hr style="margin:14px 0; border:none; border-top:1px dashed #ccc">
+  <strong>📁 または、CSVをここにドラッグ＆ドロップ</strong>
+  <p style="font-size:13px;color:#666">対応：表データ.csv ／ 合計.csv ／ グラフデータ.csv ／ 年齢表データ.csv ／ 性別表データ.csv ／ 1動画詳細CSV<br>
+  ヘッダから自動判別。複数同時OK。</p>
+  <input type="file" id="fileInput" multiple accept=".csv">
+  <div class="upload-status" id="uploadStatus"></div>
+  <div style="margin-top:10px">
+    <button class="primary" onclick="clearAll()">読み込んだデータを全消去</button>
+    <button class="primary" style="background:#888" onclick="clearCtrCache()">CTRキャッシュをクリア</button>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="dashboard">📊 ダッシュボード</button>
+  <button class="tab" data-tab="videos">🎬 動画一覧</button>
+  <button class="tab" data-tab="performance">📈 パフォーマンス分析</button>
+  <button class="tab" data-tab="audience">👥 視聴者層</button>
+  <button class="tab" data-tab="detail">🔍 1動画詳細</button>
+  <button class="tab" data-tab="insights">💡 自動インサイト＆改善提案</button>
+  <button class="tab" data-tab="comments">💬 コメント</button>
+  <button class="tab" data-tab="settings">⚙️ 設定</button>
+</div>
+
+<div class="panel active" id="panel-dashboard">
+  <div id="dashboardContent"><p class="empty">📁 まずは「表データ.csv」をアップロードしてください</p></div>
+</div>
+
+<div class="panel" id="panel-videos">
+  <div class="filters">
+    <label>検索: <input id="filterText" placeholder="タイトル・偉人名" oninput="renderVideos()"></label>
+    <label>最小再生数: <input id="filterMinViews" type="number" placeholder="0" oninput="renderVideos()" style="width:90px"></label>
+    <label>最小CTR: <input id="filterMinCtr" type="number" step="0.1" placeholder="0" oninput="renderVideos()" style="width:70px"></label>
+    <label>最小維持率: <input id="filterMinRet" type="number" step="0.1" placeholder="0" oninput="renderVideos()" style="width:70px"></label>
+  </div>
+  <div id="videosContent"></div>
+</div>
+
+<div class="panel" id="panel-performance">
+  <div id="performanceContent"><p class="empty">📁 表データを読み込むと分析が表示されます</p></div>
+</div>
+
+<div class="panel" id="panel-audience">
+  <div id="audienceContent">
+    <p class="empty">📁 「年齢表データ.csv」と「性別表データ.csv」をアップロードしてください</p>
+  </div>
+</div>
+
+<div class="panel" id="panel-detail">
+  <div id="detailContent">
+    <p class="empty">📁 1動画の詳細CSV（例：視聴維持率カーブのCSV）をアップロードしてください</p>
+    <details style="margin-top:20px">
+      <summary>1動画の詳細CSVの取得方法</summary>
+      <div style="padding:14px; background:white; border-radius:6px; margin-top:8px">
+        <ol>
+          <li>YouTube Studio → 該当動画 → アナリティクス</li>
+          <li>「詳細」タブ → 各レポート（視聴維持率・トラフィックソース・検索キーワードなど）</li>
+          <li>右上の「データをエクスポート」 → CSV</li>
+          <li>このツールにドラッグ＆ドロップ</li>
+        </ol>
+      </div>
+    </details>
+  </div>
+</div>
+
+<div class="panel" id="panel-insights">
+  <div id="insightsContent"><p class="empty">📁 表データを読み込むと自動分析・改善提案が表示されます</p></div>
+</div>
+
+<div class="panel" id="panel-comments">
+  <h2>💬 コメント返信</h2>
+  <div class="filters">
+    <label><input type="checkbox" id="filterUnreplied" checked onchange="renderComments()"> 未返信のみ</label>
+    <label>動画で絞り込み: <select id="filterVideo" onchange="renderComments()"><option value="">すべて</option></select></label>
+    <span id="commentsSummary" style="color:#666;margin-left:auto"></span>
+  </div>
+  <div id="commentsContent"><p class="empty">📁 Apps Scriptから取得するとコメント一覧が表示されます</p></div>
+</div>
+
+<div class="panel" id="panel-settings">
+  <h2>⚙️ 設定</h2>
+  <div style="background:white;padding:20px;border-radius:8px;border:1px solid #ddd;max-width:800px">
+    <h3>📺 チャンネル情報</h3>
+    <p style="font-size:13px;color:#666">AI分析・返信生成のときに使われます。</p>
+    <div style="margin:12px 0">
+      <label>チャンネル名:</label><br>
+      <input type="text" id="channelName" placeholder="例：歴史の失敗漫画館" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px">
+    </div>
+    <div style="margin:12px 0">
+      <label>チャンネル概要（1〜3行）:</label><br>
+      <textarea id="channelDescription" placeholder="例：歴史上の偉人の失敗エピソードを漫画で紹介するチャンネル" style="width:100%;min-height:60px;padding:8px;border:1px solid #ccc;border-radius:4px"></textarea>
+    </div>
+    <div style="margin:12px 0">
+      <label>想定視聴者層（任意・自動取得とは別に明示したい場合）:</label><br>
+      <input type="text" id="channelAudience" placeholder="例：55〜64歳が中心の男性" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px">
+    </div>
+
+    <h3 style="margin-top:24px">🤖 Claude API設定（AI返信機能）</h3>
+    <p style="font-size:13px;color:#666">Anthropic公式から取得したAPIキーを設定してください。ブラウザのlocalStorageに保存されます。</p>
+    <div style="margin:12px 0">
+      <label>APIキー:</label><br>
+      <input type="password" id="claudeApiKey" placeholder="sk-ant-..." style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px" autocomplete="off">
+    </div>
+    <div style="margin:12px 0">
+      <label>モデル:</label>
+      <select id="claudeModel" style="padding:8px;border:1px solid #ccc;border-radius:4px">
+        <option value="claude-sonnet-4-5">Claude Sonnet 4.5（推奨・読解力高い・月1000円程度）</option>
+        <option value="claude-haiku-4-5">Claude Haiku 4.5（安いが読解力弱・月100円程度）</option>
+      </select>
+    </div>
+
+    <h3 style="margin-top:24px">🔐 Apps Script投稿トークン</h3>
+    <p style="font-size:13px;color:#666">Apps Scriptで設定した REPLY_TOKEN と同じ文字列を入力してください（返信送信時の認証用）。</p>
+    <div style="margin:12px 0">
+      <input type="password" id="replyToken" placeholder="REPLY_TOKEN" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px" autocomplete="off">
+    </div>
+
+    <button class="primary" onclick="saveSettings()">💾 設定を保存</button>
+    <span id="settingsStatus" style="margin-left:12px;color:#2a7"></span>
+
+    <details style="margin-top:20px">
+      <summary>📖 セットアップ手順</summary>
+      <ol style="font-size:13px;color:#555">
+        <li><strong>Claude APIキー取得</strong>：<a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a> でアカウント作成 → 「API Keys」→「Create Key」→ キーをコピー → 上のフィールドに貼り付け</li>
+        <li><strong>課金登録</strong>：「Plans &amp; Billing」で最低$5（約750円）チャージ。月60円〜180円程度の利用なので半年〜1年持ちます</li>
+        <li><strong>投稿トークン設定</strong>：Apps Scriptの <code>REPLY_TOKEN</code> 定数を適当な文字列（16文字以上推奨）に書き換え、その同じ文字列をここにも入力</li>
+        <li><strong>返信スタイル例の入力</strong>：スプレッドシートの「返信スタイル例」シートに、過去の自分の返信を5〜10件入力</li>
+        <li><strong>Apps Script再デプロイ</strong>：doPost追加のためデプロイを更新（デプロイを管理→編集→新バージョン）</li>
+      </ol>
+    </details>
+  </div>
+</div>
+
+<script>
+// ==================== State ====================
+const STORE = {
+  channel: null,       // チャンネル概要（現在の登録者数等）
+  videos: null,        // 表データ（動画一覧）
+  daily: null,         // 合計（日次）
+  videoDaily: null,    // グラフデータ（動画×日次）
+  age: null,           // 年齢表データ
+  gender: null,        // 性別表データ
+  comments: null,      // コメント一覧
+  replyExamples: null, // 返信スタイル例
+  detail: {},          // 1動画詳細（複数）
+};
+
+let charts = {};
+
+// ==================== CSV Parser ====================
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cell = '', inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i], n = text[i+1];
+    if (inQuote) {
+      if (c === '"' && n === '"') { cell += '"'; i++; }
+      else if (c === '"') { inQuote = false; }
+      else cell += c;
+    } else {
+      if (c === '"') inQuote = true;
+      else if (c === ',') { row.push(cell); cell = ''; }
+      else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+      else if (c === '\r') {}
+      else cell += c;
+    }
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.length > 1 || (r.length === 1 && r[0] !== ''));
+}
+
+// ==================== File Detection ====================
+function detectType(rows, filename) {
+  if (!rows.length) return null;
+  const header = rows[0].map(s => s.trim());
+  const has = k => header.some(h => h.includes(k));
+  if (has('動画のタイトル') && has('インプレッションのクリック率')) return 'videos';
+  if (header.length === 2 && has('日付') && has('エンゲージ ビュー')) return 'daily';
+  if (has('日付') && has('動画のタイトル')) return 'videoDaily';
+  if (has('視聴者の年齢')) return 'age';
+  if (has('視聴者の性別')) return 'gender';
+  if (filename.includes('年齢')) return 'age';
+  if (filename.includes('性別')) return 'gender';
+  if (filename.includes('合計')) return 'daily';
+  if (filename.includes('グラフ')) return 'videoDaily';
+  if (filename.includes('表')) return 'videos';
+  // 1動画詳細の判定
+  if (has('動画の所要時間') || has('視聴維持率')) return 'detailRetention';
+  return 'detail';
+}
+
+// ==================== Upload Handler ====================
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const status = document.getElementById('uploadStatus');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+function handleFiles(files) {
+  status.innerHTML = '';
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const rows = parseCSV(e.target.result);
+        const type = detectType(rows, file.name);
+        const beforeHadAppsScript = type === 'videos' && STORE.videos && STORE.videos.length > 0;
+        processData(type, rows, file.name);
+        const note = beforeHadAppsScript ? ' （CTR/インプレッションのみマージ）' : '';
+        status.innerHTML += `<div class="ok">✅ ${file.name} → ${type}（${rows.length-1}行）${note}</div>`;
+        renderAll();
+      } catch (err) {
+        status.innerHTML += `<div class="ng">❌ ${file.name}: ${err.message}</div>`;
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+function processData(type, rows, filename) {
+  const header = rows[0].map(s => s.trim());
+  const data = rows.slice(1).map(r => {
+    const obj = {};
+    header.forEach((h, i) => obj[h] = (r[i]||'').trim());
+    return obj;
+  });
+
+  if (type === 'videos') {
+    const csvVids = data.filter(r => r['コンテンツ'] && r['コンテンツ'] !== '合計');
+    // CSVのCTR/インプレッション値を抽出してlocalStorageに永続保存
+    const csvCtrMap = {};
+    csvVids.forEach(r => {
+      const ctr = r['インプレッションのクリック率 (%)'];
+      const imp = r['インプレッション数'];
+      if (ctr || imp) csvCtrMap[r['コンテンツ']] = {ctr, imp};
+    });
+    if (Object.keys(csvCtrMap).length) {
+      const existing = JSON.parse(localStorage.getItem('fmkk_ctr_cache') || '{}');
+      Object.assign(existing, csvCtrMap);
+      existing._updatedAt = new Date().toISOString();
+      localStorage.setItem('fmkk_ctr_cache', JSON.stringify(existing));
+      console.log(`CTRキャッシュに${Object.keys(csvCtrMap).length}本保存`);
+    }
+    if (STORE.videos && STORE.videos.length) {
+      // Apps Scriptデータがあれば、CSVからCTR/インプレッションだけマージ
+      applyCachedCtr();
+    } else {
+      // Apps Scriptデータがなければ、CSVを丸ごと採用
+      STORE.videos = csvVids;
+    }
+    STORE.videosTotal = data.find(r => r['コンテンツ'] === '合計');
+  } else if (type === 'daily') {
+    STORE.daily = data.map(r => ({date: r['日付'], views: parseInt(r['エンゲージ ビュー'])||0}));
+  } else if (type === 'videoDaily') {
+    STORE.videoDaily = data;
+  } else if (type === 'age') {
+    STORE.age = data;
+  } else if (type === 'gender') {
+    STORE.gender = data;
+  } else {
+    STORE.detail[filename] = {type, rows, data};
+  }
+}
+
+function clearAll() {
+  if (!confirm('読み込んだデータを全部消去しますか？（CTRキャッシュ・戦略レポート・チャットは別ボタンで消去できます）')) return;
+  STORE.videos = null; STORE.daily = null; STORE.videoDaily = null;
+  STORE.age = null; STORE.gender = null; STORE.detail = {};
+  STORE.channel = null; STORE.comments = null; STORE.replyExamples = null;
+  localStorage.removeItem('fmkk_data_cache');
+  status.innerHTML = '';
+  renderAll();
+}
+
+function clearStrategyReport() {
+  if (!confirm('保存済みの戦略レポートを削除しますか？（チャット履歴は残ります）')) return;
+  localStorage.removeItem('fmkk_strategy_report');
+  renderAll();
+}
+
+function clearCtrCache() {
+  if (!confirm('CTR/インプレッションのキャッシュを消去しますか？\n（次回CSVをドロップするまでCTRは表示されなくなります）')) return;
+  localStorage.removeItem('fmkk_ctr_cache');
+  applyCachedCtr();
+  renderAll();
+  ASStatus.innerHTML = '<span style="color:#888">📊 CTRキャッシュを消去しました</span>';
+}
+
+// ==================== Apps Script Fetch ====================
+const ASStatus = document.getElementById('appsScriptStatus');
+const ASUrl = document.getElementById('appsScriptUrl');
+
+// 起動時に保存済みURL・自動更新フラグを復元
+ASUrl.value = localStorage.getItem('fmkk_apps_url') || '';
+let autoLoadEnabled = localStorage.getItem('fmkk_auto_load') === '1';
+updateAutoBtn();
+
+function updateAutoBtn() {
+  const btn = document.getElementById('autoBtn');
+  btn.textContent = autoLoadEnabled ? '🔄 自動更新ON（起動時取得）' : '🔄 自動更新OFF';
+  btn.style.background = autoLoadEnabled ? '#2a7' : '#555';
+}
+
+function autoLoadAppsScript() {
+  autoLoadEnabled = !autoLoadEnabled;
+  localStorage.setItem('fmkk_auto_load', autoLoadEnabled ? '1' : '0');
+  updateAutoBtn();
+  ASStatus.textContent = autoLoadEnabled ? '次回ツールを開いた時、自動で取得します' : '自動取得をOFFにしました';
+}
+
+async function fetchFromAppsScript() {
+  const url = ASUrl.value.trim();
+  if (!url) { ASStatus.innerHTML = '<span style="color:#c33">URLを入力してください</span>'; return; }
+  if (!url.includes('script.google.com')) { ASStatus.innerHTML = '<span style="color:#c33">Apps ScriptのURLではないようです</span>'; return; }
+  localStorage.setItem('fmkk_apps_url', url);
+
+  ASStatus.textContent = '⏳ 取得中...';
+  try {
+    const res = await fetch(url, {redirect: 'follow'});
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // データをlocalStorageにキャッシュ（次回リロード時に即表示するため）
+    try {
+      localStorage.setItem('fmkk_data_cache', JSON.stringify(data));
+    } catch (e) { console.warn('キャッシュ保存失敗（容量超過？）:', e.message); }
+    applyAppsScriptData(data);
+    const ts = new Date(data.fetchedAt || Date.now()).toLocaleString('ja-JP');
+    const counts = [];
+    if (data.videos) counts.push(`動画${data.videos.length-1}本`);
+    if (data.daily) counts.push(`日次${data.daily.length-1}日`);
+    if (data.age) counts.push('年齢層');
+    if (data.gender) counts.push('性別');
+    if (data.traffic) counts.push('トラフィックソース');
+    // CTRキャッシュの状態を表示
+    const cache = JSON.parse(localStorage.getItem('fmkk_ctr_cache') || '{}');
+    const cacheKeys = Object.keys(cache).filter(k => k !== '_updatedAt');
+    let ctrInfo = '';
+    if (cacheKeys.length) {
+      const cacheDate = cache._updatedAt ? new Date(cache._updatedAt).toLocaleDateString('ja-JP') : '?';
+      ctrInfo = `<br><span style="color:#888;font-size:11px">📊 CTRキャッシュ: ${cacheKeys.length}本 適用済み（最終更新: ${cacheDate}）</span>`;
+    } else {
+      ctrInfo = `<br><span style="color:#888;font-size:11px">📊 CTR値を入れるには「表データ.csv」をドラッグ&ドロップしてください（1回のみ・以降は自動保存）</span>`;
+    }
+    ASStatus.innerHTML = `<span style="color:#2a7">✅ 取得成功（${ts}） ${counts.join(' / ')}</span>${ctrInfo}`;
+    renderAll();
+  } catch (e) {
+    ASStatus.innerHTML = `<span style="color:#c33">❌ 取得失敗: ${e.message}<br>※「アクセス権=自分のみ」の場合、ブラウザがログイン中のGoogleアカウントとApps Scriptオーナーが一致している必要があります</span>`;
+  }
+}
+
+function applyAppsScriptData(data) {
+  // sheet形式（[[header],[row],...]）を STORE 形式（[{col:val}]）に変換
+  const toObjects = rows => {
+    if (!rows || rows.length < 2) return [];
+    const h = rows[0].map(s => String(s).trim());
+    return rows.slice(1).map(r => {
+      const o = {};
+      h.forEach((k, i) => o[k] = r[i] != null ? String(r[i]) : '');
+      return o;
+    });
+  };
+  if (data.videos) STORE.videos = toObjects(data.videos);
+  if (data.daily) {
+    const obj = toObjects(data.daily);
+    STORE.daily = obj.map(r => ({date: r['日付'], views: parseInt(r['エンゲージ ビュー']) || 0}));
+  }
+  if (data.age) STORE.age = toObjects(data.age);
+  if (data.gender) STORE.gender = toObjects(data.gender);
+  if (data.traffic) STORE.detail['トラフィックソース'] = {type: 'traffic', data: toObjects(data.traffic)};
+  if (data.channel) {
+    // チャンネル概要シートは「項目-値」形式
+    const obj = {};
+    data.channel.slice(1).forEach(r => { obj[r[0]] = r[1]; });
+    STORE.channel = obj;
+  }
+  if (data.comments) STORE.comments = toObjects(data.comments);
+  if (data.replyExamples) {
+    STORE.replyExamples = toObjects(data.replyExamples).filter(r => r['コメント本文'] && r['返信文']);
+  }
+  // 保存済みCTRキャッシュを自動適用
+  applyCachedCtr();
+}
+
+function applyCachedCtr() {
+  if (!STORE.videos) return 0;
+  const cache = JSON.parse(localStorage.getItem('fmkk_ctr_cache') || '{}');
+  let count = 0;
+  STORE.videos.forEach(v => {
+    const id = v['コンテンツ'];
+    if (id && cache[id]) {
+      if (cache[id].ctr) v['インプレッションのクリック率 (%)'] = cache[id].ctr;
+      if (cache[id].imp) v['インプレッション数'] = cache[id].imp;
+      count++;
+    }
+  });
+  if (count) console.log(`CTRキャッシュから${count}本に適用`);
+  return count;
+}
+
+// 起動時の動作：
+// 1) キャッシュがあれば即表示（ネット通信なし・一瞬）
+// 2) 自動更新ONなら、その後で最新データに上書き
+(function initFromCache() {
+  const cached = localStorage.getItem('fmkk_data_cache');
+  if (cached) {
+    try {
+      const data = JSON.parse(cached);
+      applyAppsScriptData(data);
+      const ts = data.fetchedAt ? new Date(data.fetchedAt).toLocaleString('ja-JP') : '?';
+      ASStatus.innerHTML = `<span style="color:#888">💾 前回データ表示中（${ts}）${autoLoadEnabled ? '・最新化中...' : '・[📥取得]で更新'}</span>`;
+      renderAll();
+    } catch(e) {}
+  }
+  if (autoLoadEnabled && ASUrl.value) {
+    setTimeout(() => fetchFromAppsScript(), 300);
+  }
+})();
+
+// ==================== Tabs ====================
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    renderAll();
+  });
+});
+
+// ==================== Helpers ====================
+const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+const fmt = (v, d=0) => Number(v).toLocaleString('ja-JP', {minimumFractionDigits:d, maximumFractionDigits:d});
+const esc = s => String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const parseDate = s => {
+  if (!s) return null;
+  const m = s.match(/(\w+) (\d+), (\d+)/);
+  if (m) return new Date(`${m[1]} ${m[2]}, ${m[3]}`);
+  return new Date(s);
+};
+const median = arr => { const s=[...arr].sort((a,b)=>a-b); return s.length ? s[Math.floor(s.length/2)] : 0; };
+
+function getMetrics(v) {
+  return {
+    id: v['コンテンツ'],
+    title: v['動画のタイトル'],
+    publishDate: parseDate(v['動画公開時刻']),
+    publishStr: v['動画公開時刻'],
+    length: num(v['長さ']),
+    views: num(v['視聴回数']),
+    avgTime: parseAvgTime(v['平均視聴時間']),
+    retention: num(v['平均視聴率 (%)']),
+    impressions: num(v['インプレッション数']),
+    ctr: num(v['インプレッションのクリック率 (%)']),
+    revenue: num(v['推定収益 (JPY)']),
+    subs: num(v['チャンネル登録者']),
+    watchHours: num(v['総再生時間（単位: 時間）']),
+  };
+}
+function parseAvgTime(s) {
+  if (!s) return 0;
+  const p = s.split(':').map(Number);
+  if (p.length === 3) return p[0]*3600 + p[1]*60 + p[2];
+  if (p.length === 2) return p[0]*60 + p[1];
+  return 0;
+}
+
+function destroyChart(key) { if (charts[key]) { charts[key].destroy(); delete charts[key]; } }
+
+// ==================== Render ====================
+function renderAll() {
+  renderDashboard();
+  renderVideos();
+  renderPerformance();
+  renderAudience();
+  renderDetail();
+  renderInsights();
+  renderComments();
+}
+
+// -------- Dashboard --------
+function renderDashboard() {
+  const c = document.getElementById('dashboardContent');
+  if (!STORE.videos) { c.innerHTML = '<p class="empty">📁 まずは「表データ.csv」をアップロードしてください</p>'; return; }
+
+  const vids = STORE.videos.map(getMetrics);
+  const total = vids.reduce((s,v) => ({
+    views: s.views + v.views, imp: s.imp + v.impressions, watchH: s.watchH + v.watchHours,
+    rev: s.rev + v.revenue, subs: s.subs + v.subs,
+  }), {views:0, imp:0, watchH:0, rev:0, subs:0});
+  const avgCtr = vids.reduce((s,v)=>s+v.ctr,0)/vids.length;
+  const avgRet = vids.reduce((s,v)=>s+v.retention,0)/vids.length;
+  const avgViews = total.views / vids.length;
+
+  // チャンネル概要（Apps Scriptから取得した現在値）
+  const channelInfo = STORE.channel || {};
+  const currentSubs = channelInfo['現在の総登録者数'];
+  const currentTotalViews = channelInfo['現在の総再生回数（チャンネル累計）'];
+
+  let html = '<div class="stats">';
+  html += statCard('総動画数', fmt(vids.length), '本（期間内）');
+  html += statCard('期間内 総再生数', fmt(total.views), `平均 ${fmt(Math.round(avgViews))}/本`);
+  if (currentTotalViews) html += statCard('チャンネル累計 再生数', fmt(currentTotalViews), '開設以来');
+  html += statCard('期間内 総再生時間', fmt(total.watchH, 0), '時間');
+  html += statCard('平均CTR', avgCtr.toFixed(2)+'%', `中央値 ${median(vids.map(v=>v.ctr)).toFixed(2)}%`);
+  html += statCard('平均視聴維持率', avgRet.toFixed(1)+'%', `中央値 ${median(vids.map(v=>v.retention)).toFixed(1)}%`);
+  if (currentSubs) html += statCard('現在の登録者数', fmt(currentSubs), `期間内+${fmt(total.subs)}人`);
+  else html += statCard('期間内 登録者増', fmt(total.subs), '人');
+  html += statCard('期間内 推定収益', '¥'+fmt(Math.round(total.rev)), '');
+  html += statCard('期間内 総インプレッション', fmt(total.imp), '');
+  html += '</div>';
+
+  // 日次推移
+  if (STORE.daily) {
+    html += '<div class="chart-grid"><div class="chart-box"><h3>📅 日次再生数の推移</h3><canvas id="dailyChart"></canvas></div>';
+    html += '<div class="chart-box"><h3>📅 公開月別 1動画あたりの平均再生数</h3><canvas id="monthlyChart"></canvas><p style="font-size:11px;color:#888;margin-top:6px">※その月に公開した動画の「1本あたりの平均」。月の総再生数ではない</p></div></div>';
+  }
+
+  // TOP10
+  const top = [...vids].sort((a,b)=>b.views-a.views).slice(0,10);
+  html += '<h2>🏆 再生数 TOP10</h2><div class="table-wrap"><table><thead><tr><th>#</th><th>タイトル</th><th>公開日</th><th class="num">再生数</th><th class="num">CTR</th><th class="num">維持率</th></tr></thead><tbody>';
+  top.forEach((v,i) => {
+    html += `<tr><td>${i+1}</td><td title="${esc(v.title)}">${esc(v.title.slice(0,50))}${v.title.length>50?'…':''}</td><td>${esc(v.publishStr)}</td><td class="num">${fmt(v.views)}</td><td class="num">${v.ctr.toFixed(2)}%</td><td class="num">${v.retention.toFixed(1)}%</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+
+  c.innerHTML = html;
+
+  if (STORE.daily) {
+    destroyChart('daily');
+    charts.daily = new Chart(document.getElementById('dailyChart'), {
+      type: 'line',
+      data: {
+        labels: STORE.daily.map(d => d.date),
+        datasets: [{label:'再生数', data: STORE.daily.map(d => d.views), borderColor:'#8b0000', backgroundColor:'rgba(139,0,0,0.1)', fill:true, tension:0.3}]
+      },
+      options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}}
+    });
+
+    // 月別
+    const monthly = {};
+    vids.forEach(v => {
+      if (!v.publishDate) return;
+      const ym = v.publishDate.toISOString().slice(0,7);
+      if (!monthly[ym]) monthly[ym] = {views:0, n:0};
+      monthly[ym].views += v.views; monthly[ym].n++;
+    });
+    const mLabels = Object.keys(monthly).sort();
+    destroyChart('monthly');
+    charts.monthly = new Chart(document.getElementById('monthlyChart'), {
+      type: 'bar',
+      data: {
+        labels: mLabels,
+        datasets: [{label:'平均再生数', data: mLabels.map(k => Math.round(monthly[k].views/monthly[k].n)), backgroundColor:'#8b0000'}]
+      },
+      options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}}
+    });
+  }
+}
+
+// -------- Videos Table --------
+function renderVideos() {
+  const c = document.getElementById('videosContent');
+  if (!STORE.videos) { c.innerHTML = '<p class="empty">表データを読み込んでください</p>'; return; }
+
+  const text = (document.getElementById('filterText')?.value || '').toLowerCase();
+  const minV = num(document.getElementById('filterMinViews')?.value);
+  const minC = num(document.getElementById('filterMinCtr')?.value);
+  const minR = num(document.getElementById('filterMinRet')?.value);
+
+  let vids = STORE.videos.map(getMetrics);
+  vids = vids.filter(v => v.title.toLowerCase().includes(text) && v.views>=minV && v.ctr>=minC && v.retention>=minR);
+  vids.sort((a,b) => b.views - a.views);
+
+  let html = `<p style="color:#666">${vids.length}本表示中（全${STORE.videos.length}本）</p>`;
+  html += '<div class="table-wrap"><table><thead><tr>';
+  html += '<th>公開日</th><th>タイトル</th><th class="num">尺(秒)</th><th class="num">再生数</th><th class="num">インプ</th><th class="num">CTR</th><th class="num">維持率</th><th class="num">平均視聴時間</th><th class="num">登録者</th><th class="num">収益</th></tr></thead><tbody>';
+  vids.forEach(v => {
+    const ctrCls = v.ctr >= 5 ? 'badge-good' : v.ctr >= 3 ? 'badge-mid' : 'badge-bad';
+    const retCls = v.retention >= 35 ? 'badge-good' : v.retention >= 25 ? 'badge-mid' : 'badge-bad';
+    html += `<tr>
+      <td>${esc(v.publishStr)}</td>
+      <td title="${esc(v.title)}">${esc(v.title.slice(0,50))}${v.title.length>50?'…':''}</td>
+      <td class="num">${v.length}</td>
+      <td class="num">${fmt(v.views)}</td>
+      <td class="num">${fmt(v.impressions)}</td>
+      <td class="num"><span class="badge ${ctrCls}">${v.ctr.toFixed(2)}%</span></td>
+      <td class="num"><span class="badge ${retCls}">${v.retention.toFixed(1)}%</span></td>
+      <td class="num">${Math.floor(v.avgTime/60)}:${String(v.avgTime%60).padStart(2,'0')}</td>
+      <td class="num">${v.subs}</td>
+      <td class="num">¥${fmt(Math.round(v.revenue))}</td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  c.innerHTML = html;
+}
+
+// -------- Performance Analysis --------
+function renderPerformance() {
+  const c = document.getElementById('performanceContent');
+  if (!STORE.videos) { c.innerHTML = '<p class="empty">表データを読み込んでください</p>'; return; }
+  const vids = STORE.videos.map(getMetrics);
+
+  let html = '<div class="chart-grid">';
+  html += '<div class="chart-box"><h3>🎯 CTR × 視聴維持率（散布図）</h3><canvas id="scatterChart"></canvas><p style="font-size:11px;color:#888">右上=理想／左下=改善優先</p></div>';
+  html += '<div class="chart-box"><h3>⏱️ 動画尺 vs 視聴維持率</h3><canvas id="lengthChart"></canvas></div>';
+  html += '<div class="chart-box"><h3>📊 CTR分布</h3><canvas id="ctrDistChart"></canvas></div>';
+  html += '<div class="chart-box"><h3>📊 視聴維持率分布</h3><canvas id="retDistChart"></canvas></div>';
+  html += '</div>';
+  c.innerHTML = html;
+
+  const avgCtr = vids.reduce((s,v)=>s+v.ctr,0)/vids.length;
+  const avgRet = vids.reduce((s,v)=>s+v.retention,0)/vids.length;
+
+  destroyChart('scatter');
+  charts.scatter = new Chart(document.getElementById('scatterChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: '動画', backgroundColor: 'rgba(139,0,0,0.6)',
+        data: vids.map(v => ({x:v.ctr, y:v.retention, title:v.title}))
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: {title:{display:true,text:'CTR (%)'}}, y: {title:{display:true,text:'視聴維持率 (%)'}} },
+      plugins: { legend: {display:false}, tooltip: { callbacks: { label: ctx => ctx.raw.title.slice(0,40) } } }
+    }
+  });
+
+  destroyChart('length');
+  charts.length = new Chart(document.getElementById('lengthChart'), {
+    type: 'scatter',
+    data: { datasets: [{ label: '動画', backgroundColor:'rgba(70,130,180,0.6)',
+      data: vids.map(v => ({x:v.length, y:v.retention, title:v.title})) }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      scales: { x:{title:{display:true,text:'尺（秒）'}}, y:{title:{display:true,text:'維持率 (%)'}} },
+      plugins: { legend:{display:false}, tooltip:{callbacks:{label:ctx => `${ctx.raw.title.slice(0,30)} (${ctx.raw.x}秒)`}} }
+    }
+  });
+
+  // CTR distribution
+  const ctrBins = [0,1,2,3,4,5,6,7,8,9,10];
+  const ctrCounts = ctrBins.slice(0,-1).map((b,i) => vids.filter(v => v.ctr>=b && v.ctr<ctrBins[i+1]).length);
+  destroyChart('ctrDist');
+  charts.ctrDist = new Chart(document.getElementById('ctrDistChart'), {
+    type: 'bar',
+    data: {
+      labels: ctrBins.slice(0,-1).map((b,i)=>`${b}-${ctrBins[i+1]}%`),
+      datasets: [{ label:'動画数', data: ctrCounts, backgroundColor: ctrBins.slice(0,-1).map(b => b<3?'#c33':b<5?'#d4a017':'#2a7') }]
+    },
+    options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}}
+  });
+
+  const retBins = [0,10,20,25,30,35,40,45,50,60];
+  const retCounts = retBins.slice(0,-1).map((b,i) => vids.filter(v => v.retention>=b && v.retention<retBins[i+1]).length);
+  destroyChart('retDist');
+  charts.retDist = new Chart(document.getElementById('retDistChart'), {
+    type: 'bar',
+    data: {
+      labels: retBins.slice(0,-1).map((b,i)=>`${b}-${retBins[i+1]}%`),
+      datasets: [{ label:'動画数', data: retCounts, backgroundColor: retBins.slice(0,-1).map(b => b<25?'#c33':b<35?'#d4a017':'#2a7') }]
+    },
+    options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}}
+  });
+}
+
+// -------- Audience --------
+function renderAudience() {
+  const c = document.getElementById('audienceContent');
+  if (!STORE.age && !STORE.gender) {
+    c.innerHTML = '<p class="empty">📁 「年齢表データ.csv」「性別表データ.csv」をアップロードしてください</p>';
+    return;
+  }
+  let html = '<div class="chart-grid">';
+  if (STORE.age) html += '<div class="chart-box"><h3>👤 年齢分布</h3><canvas id="ageChart"></canvas></div>';
+  if (STORE.gender) html += '<div class="chart-box"><h3>⚧ 性別分布</h3><canvas id="genderChart"></canvas></div>';
+  html += '</div>';
+  if (STORE.age) {
+    html += '<h3>年齢層別 詳細</h3><div class="table-wrap"><table><thead><tr>';
+    Object.keys(STORE.age[0]||{}).forEach(k => html += `<th>${esc(k)}</th>`);
+    html += '</tr></thead><tbody>';
+    STORE.age.forEach(r => { html += '<tr>'; Object.values(r).forEach(v => html += `<td>${esc(v)}</td>`); html += '</tr>'; });
+    html += '</tbody></table></div>';
+  }
+  c.innerHTML = html;
+
+  // 値の列を探す：パーセント/割合系を優先（ラベル列を誤って選ばないように）
+  const findValueCol = (row, labelCol) => {
+    const keys = Object.keys(row);
+    return keys.find(k => k !== labelCol && (k.includes('%') || k.includes('％') || k.includes('割合')))
+        || keys.find(k => k !== labelCol)
+        || keys[1];
+  };
+
+  if (STORE.age) {
+    const ageCol = Object.keys(STORE.age[0]).find(k => k.includes('年齢'));
+    const valCol = findValueCol(STORE.age[0], ageCol);
+    destroyChart('age');
+    charts.age = new Chart(document.getElementById('ageChart'), {
+      type: 'bar',
+      data: { labels: STORE.age.map(r => r[ageCol]),
+        datasets: [{label: valCol, data: STORE.age.map(r => num(r[valCol])), backgroundColor:'#8b0000'}] },
+      options: {responsive:true, maintainAspectRatio:false}
+    });
+  }
+  if (STORE.gender) {
+    const genCol = Object.keys(STORE.gender[0]).find(k => k.includes('性別'));
+    const valCol = findValueCol(STORE.gender[0], genCol);
+    const genderLabel = g => ({male:'男性',female:'女性',user_specified:'その他',genderMale:'男性',genderFemale:'女性',genderUserSpecified:'その他'})[g] || g;
+    destroyChart('gender');
+    charts.gender = new Chart(document.getElementById('genderChart'), {
+      type: 'doughnut',
+      data: {
+        labels: STORE.gender.map(r => genderLabel(r[genCol])),
+        datasets: [{
+          data: STORE.gender.map(r => num(r[valCol])),
+          backgroundColor:['#4a7ab8','#c4669c','#888'],
+          borderWidth: 2, borderColor: '#fff'
+        }]
+      },
+      options: {responsive:true, maintainAspectRatio:false}
+    });
+  }
+}
+
+// -------- Detail --------
+function renderDetail() {
+  const c = document.getElementById('detailContent');
+  const keys = Object.keys(STORE.detail);
+  if (!keys.length) return;
+  let html = `<h3>読み込み済み詳細CSV：${keys.length}件</h3>`;
+  keys.forEach(k => {
+    const d = STORE.detail[k];
+    html += `<details><summary>${esc(k)} (${d.data.length}行)</summary><div class="table-wrap"><table><thead><tr>`;
+    Object.keys(d.data[0]||{}).forEach(col => html += `<th>${esc(col)}</th>`);
+    html += '</tr></thead><tbody>';
+    d.data.slice(0, 100).forEach(r => { html += '<tr>'; Object.values(r).forEach(v => html += `<td>${esc(v)}</td>`); html += '</tr>'; });
+    html += '</tbody></table></div></details>';
+  });
+  c.innerHTML = html;
+}
+
+// ==================== Auto Insights ====================
+function renderInsights() {
+  const c = document.getElementById('insightsContent');
+  if (!STORE.videos) { c.innerHTML = '<p class="empty">表データを読み込んでください</p>'; return; }
+
+  const vids = STORE.videos.map(getMetrics);
+  const insights = [];
+
+  const avgCtr = vids.reduce((s,v)=>s+v.ctr,0)/vids.length;
+  const avgRet = vids.reduce((s,v)=>s+v.retention,0)/vids.length;
+  const medianViews = median(vids.map(v=>v.views));
+
+  // ==================== 🚀 戦略提案（前向きインサイト） ====================
+  // 戦略提案A: 当たり動画TOP10の共通点
+  const top10 = [...vids].sort((a,b) => b.views - a.views).slice(0, 10);
+  const bottom10 = [...vids].filter(v => v.views > 0).sort((a,b) => a.views - b.views).slice(0, 10);
+  const topAvgViews = top10.reduce((s,v)=>s+v.views,0)/top10.length;
+  const bottomAvgViews = bottom10.length ? bottom10.reduce((s,v)=>s+v.views,0)/bottom10.length : 1;
+
+  if (top10.length >= 5) {
+    insights.push({
+      level: 'good',
+      title: `🚀 戦略提案①：当たり動画TOP10の共通点を次回に活かす`,
+      reason: `TOP10の平均再生は ${fmt(Math.round(topAvgViews))} 回／BOTTOM10は ${fmt(Math.round(bottomAvgViews))} 回（${(topAvgViews/bottomAvgViews).toFixed(1)}倍の差）。次に作る動画は、TOP10の偉人選定・タイトルパターンを真似ると勝率が上がります。`,
+      data: '<strong>📈 TOP10動画（再生数順）</strong><br>' + top10.map((v,i) => `${i+1}. ${esc(v.title.slice(0,55))}（${fmt(v.views)}回／CTR${v.ctr.toFixed(2)}%／維持率${v.retention.toFixed(1)}%）`).join('<br>'),
+      action: '👉 アクション：これらの偉人テーマ・タイトル構造（数字・感情ワード・対比など）を次の動画企画に反映。下の戦略提案③で「AIに次のテーマを提案させる」も活用。'
+    });
+  }
+
+  // 戦略提案B: 伸びていない動画パターン（避けるべき方向）
+  if (bottom10.length >= 5) {
+    insights.push({
+      level: 'critical',
+      title: `📉 戦略提案②：伸びていない動画パターン（次回は避けるべき方向）`,
+      reason: `BOTTOM10（平均${fmt(Math.round(bottomAvgViews))}回）に共通するパターンを把握しておくと、次の企画で同じ失敗を避けられます。`,
+      data: '<strong>📉 BOTTOM10動画（再生数の少ない順）</strong><br>' + bottom10.map((v,i) => `${i+1}. ${esc(v.title.slice(0,55))}（${fmt(v.views)}回／CTR${v.ctr.toFixed(2)}%／維持率${v.retention.toFixed(1)}%）`).join('<br>'),
+      action: '👉 アクション：海外偉人・知名度の低い人物・抽象的タイトルが多くないか確認。次回はTOP10パターンに近い企画を優先する。'
+    });
+  }
+
+  // 戦略提案C: AI戦略アドバイザー（包括分析）
+  insights.push({
+    level: 'good',
+    title: `🧠 戦略提案③：AI戦略アドバイザー（全データ横断・包括分析）`,
+    reason: `視聴者層・トラフィック・当たり/ハズレ・CTR・維持率を全部Claudeに渡して、「チャンネルの強み・弱み」「視聴者から導かれる方向性」「次の動画テーマ5本」「今すぐやるべきTOP3アクション」まで具体的に提案させます。月1回の戦略レビューに最適。`,
+    data: `<div style="text-align:center;padding:24px;background:#f7f3e8;border-radius:6px">
+      <button class="primary" onclick="generateStrategyReport()" style="font-size:15px;padding:14px 32px">${localStorage.getItem('fmkk_strategy_report') ? '🔄 新しいレポートを生成（古いものは上書き）' : '🧠 包括的戦略レポートを生成'}（約¥20〜¥40）</button>
+      <p style="font-size:12px;color:#888;margin-top:10px">所要時間：30〜60秒</p>
+      ${(() => {
+        const saved = localStorage.getItem('fmkk_strategy_report');
+        if (!saved) return '';
+        try {
+          const r = JSON.parse(saved);
+          return `<p style="font-size:12px;color:#2a7;margin-top:10px">💾 保存済みレポートあり（${new Date(r.generatedAt).toLocaleString('ja-JP')}）→ 下に自動表示</p>`;
+        } catch(e) { return ''; }
+      })()}
+    </div>
+    <div id="strategyResult" style="margin-top:12px"></div>`,
+    action: '👉 月1回ペースで実行 → レポートを読んで方針決定 → 次の動画企画に反映。気に入らなければ「🔄再生成」で別の切り口が出ます。'
+  });
+
+  // 動画リストをインタラクティブな形式（個別分析ボタン付き）に変換
+  const videoListHtml = (videos, ctxType) => videos.slice(0, 10).map(v => `
+    <div style="padding:8px 0;border-bottom:1px dashed #eee;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        ・${esc(v.title.slice(0,50))}${v.title.length>50?'…':''}<br>
+        <small style="color:#888">CTR ${v.ctr.toFixed(2)}% / 維持率 ${v.retention.toFixed(1)}% / 再生${fmt(v.views)} / インプ${fmt(v.impressions)}</small>
+      </div>
+      <button class="secondary" style="background:#8b0000;font-size:11px;padding:4px 10px" onclick="analyzeVideo('${v.id}','${ctxType}')">🤖 この動画を分析</button>
+    </div>
+    <div id="vAnalysis_${v.id}" style="display:none;background:#fff;padding:14px;border-radius:6px;margin:4px 0 12px;border-left:3px solid #2a7"></div>
+  `).join('');
+
+  // 1. CTR vs 維持率の象限分析
+  const lowCtrHighRet = vids.filter(v => v.ctr < avgCtr && v.retention > avgRet);
+  if (lowCtrHighRet.length >= 2) {
+    insights.push({
+      level: 'critical',
+      title: `🎯 改善提案①：サムネ・タイトルの作り直しで再生数が伸びる動画が${lowCtrHighRet.length}本ある`,
+      reason: `CTR（クリック率）は平均${avgCtr.toFixed(2)}%未満なのに、視聴維持率は平均${avgRet.toFixed(1)}%超えという動画が${lowCtrHighRet.length}本あります。これは「中身は面白いのにサムネ・タイトルでクリックされていない」状態。逆にCTRさえ上がれば一気に伸びる可能性が最も高い動画群です。`,
+      data: videoListHtml(lowCtrHighRet.sort((a,b) => b.views - a.views), 'low_ctr'),
+      action: '👉 アクション：各動画の「🤖分析」ボタンで具体的なタイトル・サムネ案を生成できます。1日2〜3本ずつ消化するのが現実的なペースです。'
+    });
+  }
+
+  // 2. 高CTR・低維持率（フック詐欺）
+  const highCtrLowRet = vids.filter(v => v.ctr > avgCtr+1 && v.retention < avgRet-5);
+  if (highCtrLowRet.length >= 1) {
+    insights.push({
+      level: 'critical',
+      title: `⚠️ 改善提案②：「サムネ詐欺」になっている動画が${highCtrLowRet.length}本`,
+      reason: `CTRは高い（クリックされる）のに維持率が低い動画は、サムネ・タイトルで期待を煽った内容と中身が乖離しています。これはYouTubeアルゴリズムにも嫌われ、シリーズ全体の評価を下げる原因になります。`,
+      data: videoListHtml(highCtrLowRet.sort((a,b) => b.views - a.views), 'sumune_fraud'),
+      action: '👉 アクション：各動画の「🤖分析」ボタンで構成の見直し案を生成できます。または煽りすぎないタイトルに戻す。'
+    });
+  }
+
+  // 3. 動画尺と維持率の相関（ミッドロール広告の8分基準を考慮）
+  const sweet = vids.filter(v => v.length >= 480 && v.length <= 600);    // 8-10分（理想ゾーン）
+  const tooShort = vids.filter(v => v.length < 480);                       // 8分未満（ミッドロール不可）
+  const tooLong = vids.filter(v => v.length > 660);                        // 11分超（離脱増）
+  const ok = vids.filter(v => v.length > 600 && v.length <= 660);          // 10-11分
+  if (tooShort.length >= 1 || tooLong.length >= 1) {
+    const sweetRet = sweet.length ? sweet.reduce((s,v)=>s+v.retention,0)/sweet.length : 0;
+    const longRet = tooLong.length ? tooLong.reduce((s,v)=>s+v.retention,0)/tooLong.length : 0;
+    insights.push({
+      level: 'good',
+      title: `⏱️ 改善提案③：動画尺は8〜10分が最適ゾーン`,
+      reason: `動画尺は「ミッドロール広告枠の8分以上」を死守しつつ「視聴維持率が落ちる11分超」を避けるべき。8〜10分ゾーンの維持率${sweetRet.toFixed(1)}%、11分超${longRet.toFixed(1)}%と差があれば、長尺化を抑える価値が大きい。一方、8分未満は広告収益機会を構造的に失う。`,
+      data: `8分未満（ミッドロール不可）: ${tooShort.length}本 / 維持率 ${tooShort.length ? (tooShort.reduce((s,v)=>s+v.retention,0)/tooShort.length).toFixed(1) : 0}%<br>8〜10分（理想）: ${sweet.length}本 / 維持率 ${sweetRet.toFixed(1)}%<br>10〜11分: ${ok.length}本 / 維持率 ${ok.length ? (ok.reduce((s,v)=>s+v.retention,0)/ok.length).toFixed(1) : 0}%<br>11分超（長すぎ）: ${tooLong.length}本 / 維持率 ${longRet.toFixed(1)}%`,
+      action: `👉 アクション：シナリオ生成時に字数3,800〜4,000字＋音声行数×4秒で480〜660秒に収まるか必ずチェック。${tooShort.length}本の8分未満動画はミッドロール広告が出せず収益機会を失っているので、リメイク候補。`
+    });
+  }
+
+  // 4. CTR最低層の特定
+  const worstCtr = [...vids].sort((a,b)=>a.ctr-b.ctr).slice(0,5);
+  if (worstCtr.length && worstCtr[0].ctr < 3) {
+    insights.push({
+      level: 'critical',
+      title: `📉 改善提案④：CTR3%未満の動画が${vids.filter(v=>v.ctr<3).length}本`,
+      reason: `CTR3%は最低ライン。3%未満の動画はYouTubeに「魅力がないコンテンツ」と判定され、推奨されにくくなります。タイトル・サムネを根本から見直す必要があります。`,
+      data: videoListHtml(worstCtr, 'very_low_ctr'),
+      action: '👉 アクション：CTR下位5本を優先的にサムネテスト。共通点を探る（タイトル長すぎ／数字なし／顔アップなし／キャッチーなコピーがない 等）。'
+    });
+  }
+
+  // 5. 公開時刻分析
+  const dayMap = {};
+  vids.forEach(v => {
+    if (!v.publishDate) return;
+    const d = ['日','月','火','水','木','金','土'][v.publishDate.getDay()];
+    if (!dayMap[d]) dayMap[d] = {n:0, views:0};
+    dayMap[d].n++; dayMap[d].views += v.views;
+  });
+  const dayStats = Object.entries(dayMap).map(([d,v]) => ({d, avg: v.views/v.n, n:v.n})).sort((a,b)=>b.avg-a.avg);
+  if (dayStats.length >= 3 && dayStats[0].n >= 2) {
+    insights.push({
+      level: 'good',
+      title: `📅 改善提案⑤：公開曜日は「${dayStats[0].d}曜日」が最強`,
+      reason: `${dayStats[0].d}曜日公開の動画は平均${fmt(Math.round(dayStats[0].avg))}回再生（${dayStats[0].n}本）。最低の${dayStats[dayStats.length-1].d}曜日は${fmt(Math.round(dayStats[dayStats.length-1].avg))}回（${dayStats[dayStats.length-1].n}本）。`,
+      data: dayStats.map(d => `${d.d}曜日: 平均 ${fmt(Math.round(d.avg))}回 (${d.n}本)`).join('<br>'),
+      action: `👉 アクション：可能なら公開曜日を${dayStats[0].d}曜日中心に固定。視聴者の生活リズムに合わせた習慣化が登録者増につながる。`
+    });
+  }
+
+  // 6. 大ヒット動画の影響
+  const sortedV = [...vids].sort((a,b)=>b.views-a.views);
+  if (sortedV.length >= 3) {
+    const topShare = sortedV[0].views / vids.reduce((s,v)=>s+v.views,0) * 100;
+    if (topShare > 40) {
+      insights.push({
+        level: 'critical',
+        title: `📊 警告：チャンネルの再生数の${topShare.toFixed(0)}%が1本に依存`,
+        reason: `「${sortedV[0].title.slice(0,40)}」がチャンネル全再生数の${topShare.toFixed(1)}%を占めています。この1本が落ちるとチャンネル全体の数字が崩れる「単一動画依存」状態。視聴者が他の動画に回遊していない可能性が高い。`,
+        data: `TOP1: ${fmt(sortedV[0].views)}回 (${topShare.toFixed(1)}%)<br>TOP2: ${fmt(sortedV[1].views)}回<br>TOP3: ${fmt(sortedV[2].views)}回`,
+        action: '👉 アクション：①TOP1動画の概要欄・終了画面で他動画への導線を強化／②TOP1の視聴者層に刺さる類似テーマ（同じ偉人の関連話、同じ時代の別人物）を量産。'
+      });
+    }
+  }
+
+  // 7. タイトル文字数と再生数
+  const titleLenAnalysis = {};
+  vids.forEach(v => {
+    const len = v.title.length;
+    const bucket = len < 30 ? '短(〜29字)' : len < 45 ? '中(30〜44字)' : '長(45字〜)';
+    if (!titleLenAnalysis[bucket]) titleLenAnalysis[bucket] = {n:0, views:0, ctr:0};
+    titleLenAnalysis[bucket].n++;
+    titleLenAnalysis[bucket].views += v.views;
+    titleLenAnalysis[bucket].ctr += v.ctr;
+  });
+  const tlEntries = Object.entries(titleLenAnalysis).filter(([,v]) => v.n>=3).sort((a,b) => (b[1].ctr/b[1].n) - (a[1].ctr/a[1].n));
+  if (tlEntries.length >= 2) {
+    const best = tlEntries[0], worst = tlEntries[tlEntries.length-1];
+    if ((best[1].ctr/best[1].n) - (worst[1].ctr/worst[1].n) > 0.5) {
+      insights.push({
+        level: 'good',
+        title: `✏️ 改善提案⑥：タイトルは「${best[0]}」が最も刺さる`,
+        reason: `${best[0]}のCTR平均は${(best[1].ctr/best[1].n).toFixed(2)}%、${worst[0]}は${(worst[1].ctr/worst[1].n).toFixed(2)}%。文字数だけでも${((best[1].ctr/best[1].n) - (worst[1].ctr/worst[1].n)).toFixed(2)}ポイント差。`,
+        data: tlEntries.map(([k,v]) => `${k}: ${v.n}本 / 平均CTR ${(v.ctr/v.n).toFixed(2)}% / 平均再生 ${fmt(Math.round(v.views/v.n))}`).join('<br>'),
+        action: `👉 アクション：今後のタイトルは${best[0]}を意識。サムネ上で読み切れる文字数に。`
+      });
+    }
+  }
+
+  // 視聴者層・トラフィックの詳細分析は「🧠 AI戦略アドバイザー」に統合済み
+  // （単に「最大層は55-64」と表示するだけのインサイトは削除）
+
+  if (!insights.length) {
+    c.innerHTML = '<p class="empty">分析するには動画数が不足しています</p>';
+    return;
+  }
+
+  // 各提案にIDを付与（タイトルベース・安定）
+  insights.forEach(ins => {
+    ins.id = 'ins_' + ins.title.replace(/[^a-zA-Z0-9一-龯ぁ-んァ-ヶ]/g, '').slice(0, 30);
+  });
+
+  const states = JSON.parse(localStorage.getItem('fmkk_insight_states') || '{}');
+  const showDismissed = localStorage.getItem('fmkk_show_dismissed') === '1';
+  const active = insights.filter(ins => showDismissed || states[ins.id]?.status !== 'dismissed');
+  const dismissedCount = insights.filter(ins => states[ins.id]?.status === 'dismissed').length;
+  const appliedCount = insights.filter(ins => states[ins.id]?.status === 'applied').length;
+
+  let html = `<p style="color:#666">
+    ${active.length}件の改善提案 ${appliedCount ? `／✅採用済み${appliedCount}件` : ''} ${dismissedCount ? `／🚫却下${dismissedCount}件` : ''}
+    ${dismissedCount ? `<button class="primary" style="background:#888;font-size:11px;padding:4px 10px;margin-left:10px" onclick="toggleDismissed()">${showDismissed ? '却下を隠す' : '却下も表示'}</button>` : ''}
+  </p>`;
+  active.forEach(ins => {
+    const state = states[ins.id] || {};
+    const isApplied = state.status === 'applied';
+    const isDismissed = state.status === 'dismissed';
+    const opacity = (isApplied || isDismissed) ? 'opacity:0.5;' : '';
+    const statusBadge = isApplied ? '<span class="badge badge-good" style="margin-left:8px">✅採用済み</span>' :
+                       isDismissed ? '<span class="badge badge-bad" style="margin-left:8px">🚫却下</span>' : '';
+    html += `<div class="insight-card ${ins.level}" style="${opacity}" data-id="${ins.id}">
+      <div class="title">${ins.title}${statusBadge}</div>
+      <div class="reason">${ins.reason}</div>
+      <div class="data">${ins.data}</div>
+      <div class="action">${ins.action}</div>
+      ${state.note ? `<div style="margin-top:10px;padding:8px 12px;background:#f7f3e8;border-left:3px solid #d4a017;font-size:12px"><strong>📝メモ：</strong>${esc(state.note)}</div>` : ''}
+      <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="secondary" style="background:#2a7" onclick="setInsightStatus('${ins.id}','applied')">✅採用済みにする</button>
+        <button class="secondary" style="background:#c33" onclick="setInsightStatus('${ins.id}','dismissed')">🚫却下する（理由は次のメモで）</button>
+        <button class="secondary" onclick="addInsightNote('${ins.id}')">📝メモを追加/編集</button>
+        ${(isApplied || isDismissed) ? `<button class="secondary" style="background:#888" onclick="setInsightStatus('${ins.id}','')">状態リセット</button>` : ''}
+      </div>
+    </div>`;
+  });
+  c.innerHTML = html;
+
+  // 保存済み戦略レポートを自動復元
+  setTimeout(() => {
+    const target = document.getElementById('strategyResult');
+    if (!target) return;
+    const saved = localStorage.getItem('fmkk_strategy_report');
+    if (!saved) return;
+    try {
+      const r = JSON.parse(saved);
+      target.innerHTML = r.html + renderStrategyChat();
+      window._lastStrategyReport = r.text;
+      window._strategyContext = r.context;
+      initStrategyChat();
+    } catch(e) { console.warn('戦略レポート復元失敗:', e.message); }
+  }, 50);
+}
+
+function setInsightStatus(id, status) {
+  const states = JSON.parse(localStorage.getItem('fmkk_insight_states') || '{}');
+  if (!states[id]) states[id] = {};
+  if (status) states[id].status = status; else delete states[id].status;
+  states[id]._updatedAt = new Date().toISOString();
+  localStorage.setItem('fmkk_insight_states', JSON.stringify(states));
+  renderInsights();
+}
+
+function addInsightNote(id) {
+  const states = JSON.parse(localStorage.getItem('fmkk_insight_states') || '{}');
+  const current = states[id]?.note || '';
+  const note = prompt('この提案へのメモ・却下理由を入力してください：', current);
+  if (note === null) return;
+  if (!states[id]) states[id] = {};
+  states[id].note = note.trim();
+  if (!states[id].note) delete states[id].note;
+  states[id]._updatedAt = new Date().toISOString();
+  localStorage.setItem('fmkk_insight_states', JSON.stringify(states));
+  renderInsights();
+}
+
+function toggleDismissed() {
+  const cur = localStorage.getItem('fmkk_show_dismissed') === '1';
+  localStorage.setItem('fmkk_show_dismissed', cur ? '0' : '1');
+  renderInsights();
+}
+
+function statCard(label, value, sub) {
+  return `<div class="stat-card"><div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub}</div></div>`;
+}
+
+// ==================== Settings ====================
+function saveSettings() {
+  const apiKey = document.getElementById('claudeApiKey').value.trim();
+  const model = document.getElementById('claudeModel').value;
+  const token = document.getElementById('replyToken').value.trim();
+  const chName = document.getElementById('channelName').value.trim();
+  const chDesc = document.getElementById('channelDescription').value.trim();
+  const chAudience = document.getElementById('channelAudience').value.trim();
+  localStorage.setItem('fmkk_claude_key', apiKey);
+  localStorage.setItem('fmkk_claude_model', model);
+  localStorage.setItem('fmkk_reply_token', token);
+  localStorage.setItem('fmkk_channel_name', chName);
+  localStorage.setItem('fmkk_channel_desc', chDesc);
+  localStorage.setItem('fmkk_channel_audience', chAudience);
+  applyChannelInfo();
+  document.getElementById('settingsStatus').textContent = '✅ 保存しました';
+  setTimeout(() => document.getElementById('settingsStatus').textContent = '', 3000);
+}
+function loadSettings() {
+  document.getElementById('claudeApiKey').value = localStorage.getItem('fmkk_claude_key') || '';
+  document.getElementById('claudeModel').value = localStorage.getItem('fmkk_claude_model') || 'claude-sonnet-4-5';
+  document.getElementById('replyToken').value = localStorage.getItem('fmkk_reply_token') || '';
+  document.getElementById('channelName').value = localStorage.getItem('fmkk_channel_name') || '';
+  document.getElementById('channelDescription').value = localStorage.getItem('fmkk_channel_desc') || '';
+  document.getElementById('channelAudience').value = localStorage.getItem('fmkk_channel_audience') || '';
+  applyChannelInfo();
+}
+function applyChannelInfo() {
+  const name = localStorage.getItem('fmkk_channel_name') || 'YouTubeチャンネル';
+  const titleEl = document.getElementById('channelTitle');
+  if (titleEl) titleEl.textContent = name;
+  document.title = `${name} - アナリティクス分析ツール`;
+}
+function getChannelContext() {
+  const name = localStorage.getItem('fmkk_channel_name') || '（未設定）';
+  const desc = localStorage.getItem('fmkk_channel_desc') || '（未設定）';
+  const audience = localStorage.getItem('fmkk_channel_audience') || '';
+  return {name, desc, audience};
+}
+
+// ==================== Comments ====================
+function renderComments() {
+  const c = document.getElementById('commentsContent');
+  const sum = document.getElementById('commentsSummary');
+  if (!STORE.comments) {
+    c.innerHTML = '<p class="empty">📁 Apps Scriptから取得するとコメント一覧が表示されます</p>';
+    sum.textContent = '';
+    return;
+  }
+
+  // 動画フィルタの選択肢を更新
+  const videoSelect = document.getElementById('filterVideo');
+  if (videoSelect.options.length <= 1) {
+    const titles = [...new Set(STORE.comments.map(c => c['動画タイトル']))].sort();
+    titles.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t; opt.textContent = t.slice(0, 60);
+      videoSelect.appendChild(opt);
+    });
+  }
+
+  const unrepliedOnly = document.getElementById('filterUnreplied').checked;
+  const videoFilter = videoSelect.value;
+  let list = STORE.comments.filter(c =>
+    (!unrepliedOnly || c['返信済み'] === '未') &&
+    (!videoFilter || c['動画タイトル'] === videoFilter)
+  );
+
+  const totalUnreplied = STORE.comments.filter(c => c['返信済み'] === '未').length;
+  sum.textContent = `表示: ${list.length}件 / 全${STORE.comments.length}件 / 未返信${totalUnreplied}件`;
+
+  if (!list.length) {
+    c.innerHTML = '<p class="empty">該当するコメントはありません</p>';
+    return;
+  }
+
+  let html = '';
+  list.slice(0, 100).forEach((com, i) => {
+    const id = com['コメントID'];
+    const isReplied = com['返信済み'] === '済';
+    const cardClass = isReplied ? 'opacity:0.6;' : '';
+    html += `<div class="insight-card" style="${cardClass}border-left-color:${isReplied ? '#888' : '#8b0000'}" data-comment-id="${id}">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:12px;color:#888;margin-bottom:6px">
+        <span>📺 ${esc(com['動画タイトル']||'').slice(0, 50)}</span>
+        <span>📅 ${esc((com['投稿日時']||'').slice(0, 16).replace('T', ' '))} 👍${com['いいね数']||0} ${isReplied ? '✅返信済み' : '🔴未返信'}</span>
+      </div>
+      <div style="font-weight:bold;margin-bottom:4px">👤 ${esc(com['コメント主'])}</div>
+      <div style="background:#f7f3e8;padding:10px;border-radius:4px;margin-bottom:10px;white-space:pre-wrap">${esc(com['本文'])}</div>
+      ${isReplied && com['自分の返信'] ? `<div style="background:#e8f4ee;padding:10px;border-radius:4px;margin-bottom:10px;font-size:13px"><strong>↪️ 自分の返信:</strong><br>${esc(com['自分の返信'])}</div>` : ''}
+      ${!isReplied ? `
+        <textarea id="reply_${id}" placeholder="返信文（手動入力 or AI生成）" style="width:100%;min-height:80px;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:13px"></textarea>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <button class="primary" onclick="generateAIReply('${id}')">🤖 AI返信案を生成</button>
+          <button class="primary" style="background:#2a7" onclick="postReply('${id}')">📤 返信を送信</button>
+          <a href="${esc(com['コメントURL']||'')}" target="_blank" class="primary" style="background:#888;text-decoration:none;display:inline-block;padding:8px 14px">🎬 Studioで開く（❤️ハート用）</a>
+        </div>
+      ` : ''}
+      <div id="aiStatus_${id}" style="margin-top:8px;font-size:12px"></div>
+    </div>`;
+  });
+  if (list.length > 100) html += `<p style="color:#888;text-align:center;margin-top:10px">最初の100件のみ表示中（全${list.length}件）</p>`;
+  c.innerHTML = html;
+}
+
+async function generateStrategyReport() {
+  const apiKey = localStorage.getItem('fmkk_claude_key');
+  if (!apiKey) {
+    alert('⚙️設定タブでClaude APIキーを設定してください');
+    return;
+  }
+  const target = document.getElementById('strategyResult');
+  if (!target) return;
+  target.innerHTML = '<span style="color:#888">🧠 全データを分析中...（30〜60秒）</span>';
+
+  const vids = STORE.videos.map(getMetrics);
+  const top15 = [...vids].sort((a,b) => b.views - a.views).slice(0, 15);
+  const bottom15 = [...vids].filter(v => v.views > 0).sort((a,b) => a.views - b.views).slice(0, 15);
+  const avgCtr = vids.reduce((s,v)=>s+v.ctr,0)/vids.length;
+  const avgRet = vids.reduce((s,v)=>s+v.retention,0)/vids.length;
+  const avgLen = vids.reduce((s,v)=>s+v.length,0)/vids.length;
+
+  // 視聴者層
+  let ageInfo = '不明';
+  if (STORE.age && STORE.age.length) {
+    const ageCol = Object.keys(STORE.age[0]).find(k => k.includes('年齢'));
+    const ageKeys = Object.keys(STORE.age[0]);
+    const valCol = ageKeys.find(k => k !== ageCol && (k.includes('%') || k.includes('％') || k.includes('割合'))) || ageKeys[1];
+    ageInfo = STORE.age.map(r => `${r[ageCol]}: ${r[valCol]}%`).join(' / ');
+  }
+  let genderInfo = '不明';
+  if (STORE.gender && STORE.gender.length) {
+    const genCol = Object.keys(STORE.gender[0]).find(k => k.includes('性別'));
+    const genKeys = Object.keys(STORE.gender[0]);
+    const valCol = genKeys.find(k => k !== genCol && (k.includes('%') || k.includes('％') || k.includes('割合'))) || genKeys[1];
+    const map = {male:'男性',female:'女性',user_specified:'その他',genderMale:'男性',genderFemale:'女性',genderUserSpecified:'その他'};
+    genderInfo = STORE.gender.map(r => `${map[r[genCol]] || r[genCol]}: ${r[valCol]}%`).join(' / ');
+  }
+
+  // トラフィックソース
+  let trafficInfo = '不明';
+  const trafficData = STORE.detail['トラフィックソース']?.data;
+  if (trafficData && trafficData.length) {
+    const totalViews = trafficData.reduce((s,r) => s + num(r['視聴回数']), 0);
+    trafficInfo = trafficData.map(r => {
+      const v = num(r['視聴回数']);
+      const pct = totalViews ? (v/totalViews*100).toFixed(1) : 0;
+      return `${r['トラフィックソース']}: ${pct}%（${fmt(v)}回）`;
+    }).join(' / ');
+  }
+
+  // チャンネル概要
+  const channelSubs = STORE.channel?.['現在の総登録者数'] || '不明';
+  const channelTotalViews = STORE.channel?.['現在の総再生回数（チャンネル累計）'] || '不明';
+
+  const ch = getChannelContext();
+  const prompt = `あなたはYouTubeチャンネル「${ch.name}」の戦略コンサルタント。実データに基づき、具体的で実行可能な戦略レポートを書いてください。
+
+【チャンネル概要】
+- ${ch.desc}
+${ch.audience ? '- 想定視聴者層: ' + ch.audience : ''}
+- 現在の登録者数: ${channelSubs}
+- 累計再生回数: ${channelTotalViews}
+- 直近期間の動画数: ${vids.length}本
+- 動画尺平均: ${Math.round(avgLen/60)}分${Math.round(avgLen%60)}秒
+- 平均CTR: ${avgCtr.toFixed(2)}%
+- 平均視聴維持率: ${avgRet.toFixed(1)}%
+
+【視聴者層（年齢）】
+${ageInfo}
+
+【視聴者層（性別）】
+${genderInfo}
+
+【トラフィックソース】
+${trafficInfo}
+
+【再生数TOP15】
+${top15.map((v,i) => `${i+1}. 「${v.title}」 / ${v.views}回 / CTR${v.ctr.toFixed(2)}% / 維持率${v.retention.toFixed(1)}%`).join('\n')}
+
+【再生数BOTTOM15】
+${bottom15.map((v,i) => `${i+1}. 「${v.title}」 / ${v.views}回 / CTR${v.ctr.toFixed(2)}% / 維持率${v.retention.toFixed(1)}%`).join('\n')}
+
+【厳守ルール】
+- 一般論ではなく**実データに基づく**具体的な提案
+- 「〇〇しましょう」ではなく「**こうしてください**」レベルの行動指示
+- 「視聴者層は55-64歳が33%」のような事実陳述ではなく、「**55-64歳が33%だから、彼らが普段見ているNHK特集風のサムネに寄せて、文字を大きく・余白多めにする**」レベルまで落とし込む
+- 抽象的なアドバイス禁止。常に「次の動画でこれをやれ」レベル
+
+【出力フォーマット（厳守・Markdown）】
+
+## 🎯 1. チャンネル現状診断
+### 強み（3つ・データ根拠付き）
+### 弱み（3つ・データ根拠付き）
+
+## 👥 2. 視聴者層から導かれる戦略
+- どんな人が見ているか（年齢・性別・推測される生活・興味）
+- 彼らが普段見ている他のYouTubeコンテンツ・テレビ番組（推測）
+- そこから導かれる**サムネのスタイル**（具体的に・文字サイズ・色・構図）
+- 彼らに刺さる**テーマの方向性**（具体的に・偉人の選び方）
+- 避けるべきテーマ
+- **今すぐできるアクション3つ**
+
+## 🔍 3. 発見経路（トラフィック）分析
+- 現状の流入経路の偏り
+- 弱い経路（例：YouTube検索）の強化策
+- **今すぐできるアクション3つ**
+
+## 📊 4. 当たり/ハズレの構造分析
+- TOP15に共通する要素5つ（偉人タイプ・タイトル構造・時代・テーマ性など）
+- BOTTOM15に共通する要素5つ
+- **次回への教訓3つ**
+
+## 🚀 5. 次に作るべき動画テーマ5本
+各テーマで：
+### 1. 【偉人名】〇〇〇〇〇〇（タイトル案）
+- なぜ当たりそうか（データ根拠2-3文）
+- サムネ用キャッチコピー（7-10字）/ サブコピー（2-5字）
+- 優先度（高/中/低）
+
+## ⭐ 6. 今すぐ取り組むべきTOP3アクション
+明日からできる具体的アクションを3つ。優先度順。「サムネを変える」のような抽象的なものではなく、「〇〇動画のサムネを、〇〇というコピーで作り直す」レベル`;
+
+  try {
+    const model = localStorage.getItem('fmkk_claude_model') || 'claude-sonnet-4-5';
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model, max_tokens: 8000,
+        messages: [{role: 'user', content: prompt}],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HTTP ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = data.content?.[0]?.text?.trim() || '';
+    const usage = data.usage;
+    const isSonnet = model.includes('sonnet');
+    const cost = usage ? ((usage.input_tokens * (isSonnet?3:1) + usage.output_tokens * (isSonnet?15:5)) / 1000000 * 150).toFixed(2) : '?';
+
+    const html = text
+      .replace(/^## (.+)$/gm, '<h3 style="color:#8b0000;margin:22px 0 10px;border-bottom:2px solid #8b0000;padding-bottom:6px">$1</h3>')
+      .replace(/^### (.+)$/gm, '<h4 style="color:#a52a2a;margin:14px 0 6px">$1</h4>')
+      .replace(/^- (.+)$/gm, '<div style="margin:4px 0 4px 16px">• $1</div>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong style="color:#8b0000">$1</strong>')
+      .replace(/\n\n/g, '<br>')
+      .replace(/\n/g, '<br>');
+
+    const reportHtml = `<div style="background:#fff;padding:20px;border-radius:8px;border-left:5px solid #2a7;line-height:1.7">
+      ${html}
+      <div style="margin-top:18px;padding-top:10px;border-top:1px dashed #ddd;font-size:11px;color:#888">
+        💰 約¥${cost}（入力${usage?.input_tokens || 0}/出力${usage?.output_tokens || 0}トークン）／ 生成日時: ${new Date().toLocaleString('ja-JP')}
+        <button class="secondary" style="background:#8b0000;font-size:11px;padding:4px 10px;margin-left:10px" onclick="generateStrategyReport()">🔄 別の切り口で再生成</button>
+        <button class="secondary" style="background:#555;font-size:11px;padding:4px 10px" onclick="downloadStrategyReport()">💾 .mdで保存</button>
+      </div>
+    </div>`;
+    target.innerHTML = reportHtml + renderStrategyChat();
+    window._lastStrategyReport = text;
+    window._strategyContext = prompt + '\n\n【生成済みの戦略レポート】\n' + text;
+    // localStorageに永続保存（リロード後も復元される）
+    try {
+      localStorage.setItem('fmkk_strategy_report', JSON.stringify({
+        text, html: reportHtml, context: window._strategyContext,
+        generatedAt: new Date().toISOString(),
+      }));
+    } catch(e) { console.warn('戦略レポート保存失敗:', e.message); }
+    initStrategyChat();
+  } catch (e) {
+    target.innerHTML = `<span style="color:#c33">❌ エラー: ${esc(e.message)}</span>`;
+  }
+}
+
+// ==================== AI戦略チャット ====================
+function renderStrategyChat() {
+  return `
+    <div style="margin-top:24px;background:#fff;padding:20px;border-radius:8px;border:2px solid #8b0000">
+      <h3 style="color:#8b0000;margin-top:0">💬 戦略について深掘り相談</h3>
+      <p style="font-size:12px;color:#666;margin:6px 0 14px">
+        レポートと全データを記憶した状態で会話できます。タイトル案の修正・別テーマの提案・特定動画の分析など何でもどうぞ。<br>
+        例：「テーマ1の福島正則のタイトル、もう3案出して」「関ヶ原の西軍武将で他にネタになりそうな人は？」「直江兼続の動画なぜ伸びなかったか深掘りして」
+      </p>
+      <div id="chatHistory" style="max-height:500px;overflow-y:auto;padding:8px;background:#faf8f3;border-radius:6px;margin-bottom:10px"></div>
+      <textarea id="chatInput" placeholder="質問・相談を入力（Shift+Enterで改行・Enterで送信）" style="width:100%;min-height:70px;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:13px"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="primary" onclick="sendChatMessage()">📤 送信（Enterでも可）</button>
+        <button class="secondary" style="background:#888" onclick="clearStrategyChat()">🗑️ 会話をクリア</button>
+        <button class="secondary" onclick="downloadChat()">💾 会話を保存</button>
+        <span id="chatStatus" style="font-size:11px;color:#888;margin-left:auto"></span>
+      </div>
+    </div>`;
+}
+
+function initStrategyChat() {
+  if (!window._chatHistory) window._chatHistory = [];
+  // 既存履歴をlocalStorageから復元
+  const saved = localStorage.getItem('fmkk_chat_history');
+  if (saved && !window._chatHistory.length) {
+    try { window._chatHistory = JSON.parse(saved); } catch(e) {}
+  }
+  renderChatHistory();
+  // Enterで送信、Shift+Enterで改行
+  const input = document.getElementById('chatInput');
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+      }
+    });
+  }
+}
+
+function renderChatHistory() {
+  const c = document.getElementById('chatHistory');
+  if (!c) return;
+  if (!window._chatHistory || !window._chatHistory.length) {
+    c.innerHTML = '<p style="color:#aaa;text-align:center;padding:20px;font-size:12px">まだ会話がありません。下の入力欄から質問してください。</p>';
+    return;
+  }
+  let html = '';
+  window._chatHistory.forEach(msg => {
+    if (msg.role === 'user') {
+      html += `<div style="margin:8px 0;padding:10px 14px;background:#8b0000;color:#fff;border-radius:14px 14px 4px 14px;margin-left:80px;white-space:pre-wrap">${esc(msg.content)}</div>`;
+    } else {
+      const renderedHtml = (msg.content || '')
+        .replace(/^## (.+)$/gm, '<h4 style="color:#8b0000;margin:12px 0 6px">$1</h4>')
+        .replace(/^### (.+)$/gm, '<h5 style="color:#a52a2a;margin:8px 0 4px">$1</h5>')
+        .replace(/^\d+\. (.+)$/gm, '<div style="margin:3px 0 3px 14px">• $1</div>')
+        .replace(/^- (.+)$/gm, '<div style="margin:3px 0 3px 14px">• $1</div>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong style="color:#8b0000">$1</strong>')
+        .replace(/\n\n/g, '<br>')
+        .replace(/\n/g, '<br>');
+      html += `<div style="margin:8px 0;padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:14px 14px 14px 4px;margin-right:80px;line-height:1.6">${renderedHtml}${msg.cost ? `<div style="margin-top:8px;font-size:10px;color:#aaa;text-align:right">💰 約¥${msg.cost}</div>` : ''}</div>`;
+    }
+  });
+  c.innerHTML = html;
+  c.scrollTop = c.scrollHeight;
+}
+
+async function sendChatMessage() {
+  const apiKey = localStorage.getItem('fmkk_claude_key');
+  if (!apiKey) {
+    alert('⚙️設定タブでClaude APIキーを設定してください');
+    return;
+  }
+  const input = document.getElementById('chatInput');
+  const status = document.getElementById('chatStatus');
+  const text = input.value.trim();
+  if (!text) return;
+
+  if (!window._chatHistory) window._chatHistory = [];
+  window._chatHistory.push({role: 'user', content: text});
+  input.value = '';
+  renderChatHistory();
+  status.textContent = '🤖 考え中...';
+
+  // 会話履歴をAPI形式に変換
+  const apiMessages = window._chatHistory.map(m => ({role: m.role, content: m.content}));
+
+  const ch = getChannelContext();
+  const systemPrompt = `あなたはYouTubeチャンネル「${ch.name}」の戦略コンサルタント。
+${ch.desc}
+${ch.audience ? '視聴者層: ' + ch.audience : ''}
+
+【厳守ルール】
+- 一般論ではなく、過去動画データに基づいた具体的な提案をする
+- タイトル案を求められたら、検索キーワードを意識した具体的なもの（抽象的でカッコいいだけのタイトル禁止）
+- 「〜してはどうでしょう」ではなく「〜してください」レベルで断言する
+- データ根拠を必ず添える
+- 視聴者層を常に意識（年齢層・性別から想定される嗜好に合わせる）
+
+【現在のチャンネルデータ・戦略レポート（参考情報）】
+${window._strategyContext || '（戦略レポート未生成）'}`;
+
+  try {
+    const model = localStorage.getItem('fmkk_claude_model') || 'claude-sonnet-4-5';
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model, max_tokens: 4000,
+        system: systemPrompt,
+        messages: apiMessages,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HTTP ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const reply = data.content?.[0]?.text?.trim() || '';
+    const usage = data.usage;
+    const isSonnet = model.includes('sonnet');
+    const cost = usage ? ((usage.input_tokens * (isSonnet?3:1) + usage.output_tokens * (isSonnet?15:5)) / 1000000 * 150).toFixed(2) : '?';
+
+    window._chatHistory.push({role: 'assistant', content: reply, cost});
+    localStorage.setItem('fmkk_chat_history', JSON.stringify(window._chatHistory));
+    renderChatHistory();
+    status.textContent = `💰 ¥${cost}・累計${window._chatHistory.length}件`;
+  } catch (e) {
+    status.innerHTML = `<span style="color:#c33">❌ ${esc(e.message)}</span>`;
+    // エラー時はユーザー入力を消さない
+    input.value = text;
+    window._chatHistory.pop();
+    renderChatHistory();
+  }
+}
+
+function clearStrategyChat() {
+  if (!confirm('会話履歴を全部消去しますか？')) return;
+  window._chatHistory = [];
+  localStorage.removeItem('fmkk_chat_history');
+  renderChatHistory();
+  document.getElementById('chatStatus').textContent = '';
+}
+
+function downloadChat() {
+  if (!window._chatHistory || !window._chatHistory.length) {
+    alert('保存する会話がありません');
+    return;
+  }
+  const md = window._chatHistory.map(m => {
+    const role = m.role === 'user' ? '## 🙋 あなた' : '## 🤖 AI戦略アドバイザー';
+    return `${role}\n\n${m.content}\n`;
+  }).join('\n---\n\n');
+  const blob = new Blob([md], {type:'text/markdown'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `fmkk_chat_${new Date().toISOString().slice(0,10)}.md`;
+  a.click();
+}
+
+function downloadStrategyReport() {
+  if (!window._lastStrategyReport) return;
+  const blob = new Blob([window._lastStrategyReport], {type:'text/markdown'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `fmkk_strategy_${new Date().toISOString().slice(0,10)}.md`;
+  a.click();
+}
+
+async function suggestNextThemes() {
+  const apiKey = localStorage.getItem('fmkk_claude_key');
+  if (!apiKey) {
+    alert('⚙️設定タブでClaude APIキーを設定してください');
+    return;
+  }
+  const target = document.getElementById('themesResult');
+  if (!target) return;
+  target.innerHTML = '<span style="color:#888">🤖 分析中...（20〜40秒）</span>';
+
+  const vids = STORE.videos.map(getMetrics);
+  const top15 = [...vids].sort((a,b) => b.views - a.views).slice(0, 15);
+  const bottom15 = [...vids].filter(v => v.views > 0).sort((a,b) => a.views - b.views).slice(0, 15);
+
+  // 年齢層情報
+  let audienceInfo = '不明';
+  if (STORE.age && STORE.age.length) {
+    const ageCol = Object.keys(STORE.age[0]).find(k => k.includes('年齢'));
+    const valCol = Object.keys(STORE.age[0]).find(k => k !== ageCol && (k.includes('%') || k.includes('％') || k.includes('割合'))) || Object.keys(STORE.age[0])[1];
+    audienceInfo = STORE.age.map(r => `${r[ageCol]}: ${r[valCol]}%`).join(' / ');
+  }
+
+  const ch = getChannelContext();
+  const prompt = `あなたはYouTubeチャンネル「${ch.name}」の戦略コンサルタントです。過去動画の数字データから、次に作るべき動画テーマを具体的に5本提案してください。
+
+【チャンネル情報】
+- ${ch.desc}
+${ch.audience ? '- 視聴者層: ' + ch.audience : ''}
+
+【視聴者層】
+${audienceInfo}
+
+【再生数TOP15（当たり動画）】
+${top15.map((v,i) => `${i+1}. 「${v.title}」 / 再生${v.views}回 / CTR${v.ctr.toFixed(2)}% / 維持率${v.retention.toFixed(1)}%`).join('\n')}
+
+【再生数BOTTOM15（伸びなかった動画）】
+${bottom15.map((v,i) => `${i+1}. 「${v.title}」 / 再生${v.views}回 / CTR${v.ctr.toFixed(2)}% / 維持率${v.retention.toFixed(1)}%`).join('\n')}
+
+【出力フォーマット（厳守・Markdown）】
+
+## 📊 当たっている傾向（3〜5項目）
+TOP15から読み取れる共通点を箇条書きで（偉人選定・タイトル構造・テーマ性など）
+
+## 📉 ハズレ傾向（3〜5項目）
+BOTTOM15から読み取れる共通点・避けるべきパターン
+
+## 🚀 次に作るべき動画テーマ5本
+
+### 1. 【偉人名】タイトル案
+- なぜ当たりそうか（2〜3文・データ根拠を入れる）
+- 想定キャッチコピー（サムネ用・7-10字）
+- 優先度（高/中/低）
+
+### 2. 〜（同形式で5本）
+
+## 💡 タイトル作成の鉄則（3つ）
+今後のタイトルで意識すべきポイントを3つ`;
+
+  try {
+    const model = localStorage.getItem('fmkk_claude_model') || 'claude-sonnet-4-5';
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model, max_tokens: 4000,
+        messages: [{role: 'user', content: prompt}],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HTTP ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = data.content?.[0]?.text?.trim() || '';
+    const usage = data.usage;
+    const isSonnet = model.includes('sonnet');
+    const cost = usage ? ((usage.input_tokens * (isSonnet?3:1) + usage.output_tokens * (isSonnet?15:5)) / 1000000 * 150).toFixed(2) : '?';
+
+    // Markdown → HTML（簡易）
+    const html = text
+      .replace(/^## (.+)$/gm, '<h3 style="color:#8b0000;margin:18px 0 8px;border-bottom:2px solid #8b0000;padding-bottom:4px">$1</h3>')
+      .replace(/^### (.+)$/gm, '<h4 style="color:#a52a2a;margin:12px 0 6px">$1</h4>')
+      .replace(/^- (.+)$/gm, '<div style="margin:4px 0 4px 16px">• $1</div>')
+      .replace(/\n\n/g, '<br>')
+      .replace(/\n/g, '<br>');
+
+    target.innerHTML = `<div style="background:#fff;padding:16px;border-radius:8px;border-left:4px solid #2a7">
+      ${html}
+      <div style="margin-top:14px;padding-top:8px;border-top:1px dashed #ddd;font-size:11px;color:#888">
+        💰 約¥${cost}（入力${usage?.input_tokens || 0}/出力${usage?.output_tokens || 0}トークン）
+        <button class="secondary" style="background:#8b0000;font-size:11px;padding:4px 10px;margin-left:10px" onclick="suggestNextThemes()">🔄 別案で再提案</button>
+      </div>
+    </div>`;
+  } catch (e) {
+    target.innerHTML = `<span style="color:#c33">❌ エラー: ${esc(e.message)}</span>`;
+  }
+}
+
+async function analyzeVideo(videoId, ctxType) {
+  const apiKey = localStorage.getItem('fmkk_claude_key');
+  if (!apiKey) {
+    alert('⚙️設定タブでClaude APIキーを設定してください');
+    return;
+  }
+  const v = (STORE.videos || []).map(getMetrics).find(x => x.id === videoId);
+  if (!v) return;
+
+  const target = document.getElementById(`vAnalysis_${videoId}`);
+  target.style.display = 'block';
+  target.innerHTML = '<span style="color:#888">🤖 分析中...（10〜20秒）</span>';
+
+  const ctxDescription = {
+    low_ctr: 'CTR（クリック率）が低いのに、視聴維持率は高い「中身は良いのにサムネ・タイトルで損している」動画',
+    sumune_fraud: 'CTRは高いのに視聴維持率が低い「サムネ・タイトルで煽りすぎて中身が伴わない」動画',
+    very_low_ctr: 'CTR3%未満で、YouTubeアルゴリズムに推奨されにくい状態の動画',
+  }[ctxType] || '改善が必要な動画';
+
+  const ch = getChannelContext();
+  const prompt = `あなたはYouTubeチャンネル「${ch.name}」の戦略コンサルタントです。以下の動画を分析して、具体的な改善案を提示してください。
+
+【チャンネル情報】
+- ${ch.desc}
+${ch.audience ? '- 視聴者層: ' + ch.audience : ''}
+
+【今回の動画】
+タイトル: ${v.title}
+公開日: ${v.publishStr}
+動画尺: ${Math.floor(v.length/60)}分${v.length%60}秒
+再生数: ${v.views.toLocaleString()}
+CTR: ${v.ctr.toFixed(2)}%
+視聴維持率: ${v.retention.toFixed(1)}%
+インプレッション数: ${v.impressions.toLocaleString()}
+登録者増: ${v.subs}
+
+【状況】
+この動画は「${ctxDescription}」に分類されています。
+
+【出力フォーマット（厳守）】
+以下のMarkdown形式で出力してください：
+
+## 🔍 現状の問題点
+（タイトルやスペックから推測される、CTR/維持率の問題点を2〜3文で）
+
+## ✏️ 改善版タイトル案（3つ）
+1. （40字以内・SEO・数字・感情ワードを意識）
+2. （違うアプローチ）
+3. （違うアプローチ）
+
+## 🖼️ サムネB/C用キャッチコピー案（3つ）
+1. メインコピー「○○○○○○」（7-10字） / サブコピー「○○」（2-5字）
+2. メインコピー「○○○○○○」 / サブコピー「○○」
+3. メインコピー「○○○○○○」 / サブコピー「○○」
+
+## ⭐ 優先度
+（高/中/低）と理由を1〜2文で。再生数が多い動画ほど改善インパクトが大きい点も加味。`;
+
+  try {
+    const model = localStorage.getItem('fmkk_claude_model') || 'claude-sonnet-4-5';
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model, max_tokens: 1500,
+        messages: [{role: 'user', content: prompt}],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HTTP ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = data.content?.[0]?.text?.trim() || '';
+    const usage = data.usage;
+    const isSonnet = model.includes('sonnet');
+    const cost = usage ? ((usage.input_tokens * (isSonnet?3:1) + usage.output_tokens * (isSonnet?15:5)) / 1000000 * 150).toFixed(2) : '?';
+
+    // 簡易Markdown → HTML
+    const html = text
+      .replace(/^## (.+)$/gm, '<h4 style="color:#8b0000;margin:14px 0 6px;border-left:3px solid #8b0000;padding-left:8px">$1</h4>')
+      .replace(/^\d+\. (.+)$/gm, '<div style="margin:4px 0 4px 16px">• $1</div>')
+      .replace(/\n\n/g, '<br>')
+      .replace(/\n/g, '<br>');
+
+    target.innerHTML = `${html}
+      <div style="margin-top:12px;padding-top:8px;border-top:1px dashed #ddd;font-size:11px;color:#888">
+        💰 約¥${cost}（入力${usage?.input_tokens || 0}/出力${usage?.output_tokens || 0}トークン）
+        <button class="secondary" style="background:#8b0000;font-size:11px;padding:4px 10px;margin-left:10px" onclick="analyzeVideo('${videoId}','${ctxType}')">🔄 別案で再生成</button>
+        <button class="secondary" style="background:#888;font-size:11px;padding:4px 10px" onclick="document.getElementById('vAnalysis_${videoId}').style.display='none'">閉じる</button>
+      </div>`;
+  } catch (e) {
+    target.innerHTML = `<span style="color:#c33">❌ エラー: ${esc(e.message)}</span>`;
+  }
+}
+
+async function generateAIReply(commentId) {
+  const apiKey = localStorage.getItem('fmkk_claude_key');
+  if (!apiKey) {
+    alert('⚙️設定タブでClaude APIキーを設定してください');
+    return;
+  }
+  const com = STORE.comments.find(c => c['コメントID'] === commentId);
+  if (!com) return;
+
+  const status = document.getElementById(`aiStatus_${commentId}`);
+  status.innerHTML = '<span style="color:#888">🤖 生成中...</span>';
+
+  // 「（例）」で始まる行は除外（プレースホルダ対策）
+  const allExamples = (STORE.replyExamples || []).filter(e =>
+    e['コメント本文'] && e['返信文'] &&
+    !e['コメント本文'].startsWith('（例）') &&
+    !e['返信文'].startsWith('（例）')
+  );
+  // 15件以上ある場合はランダムサンプリング（コスト削減＆AI混乱防止）
+  const SAMPLE_SIZE = 15;
+  let examples = allExamples;
+  if (allExamples.length > SAMPLE_SIZE) {
+    const shuffled = [...allExamples].sort(() => Math.random() - 0.5);
+    examples = shuffled.slice(0, SAMPLE_SIZE);
+  }
+  const examplesText = examples.length
+    ? examples.map(e => `コメント例: ${e['コメント本文']}\n返信例: ${e['返信文']}`).join('\n\n')
+    : '（過去返信例が登録されていません。一般的な丁寧な返信を生成します）';
+
+  const ch = getChannelContext();
+  const prompt = `あなたは「${ch.name}」というYouTubeチャンネルの運営者です。視聴者のコメントに対して、運営者の口調で返信を書いてください。
+
+【チャンネル情報】
+- ${ch.desc}
+${ch.audience ? '- 視聴者層: ' + ch.audience : ''}
+
+【過去の返信例】（この口調・スタイルを真似てください）
+${examplesText}
+
+【今回のコメント】
+動画タイトル: ${com['動画タイトル']}
+コメント主: ${com['コメント主']}
+コメント本文: ${com['本文']}
+
+【返信前の読解ステップ（必ず守る）】
+1. コメントの主語が誰か特定する（動画の偉人？視聴者自身？別の人物？）
+2. コメントの末尾の「by〇〇」「〇〇より」などは「コメント主のサイン・ロールプレイ」で、主語ではない
+3. 冗談・自虐・ロールプレイ・本気の感想・質問・意見、どれかを判別する
+4. 動画タイトルとコメントの関連を確認する
+
+【絶対ルール】
+1. 過去返信例にない決まり文句（「次回もぜひご覧ください」「次回もお楽しみに」「お楽しみに」など）は禁止。過去返信例で実際に使われている表現だけ使う
+2. コメントが冗談・自虐の場合：軽く受け流す or 冗談で返す（深刻な反応・お悔やみは厳禁）
+3. コメントが感想の場合：その内容に具体的に共感し、関連する歴史エピソードを軽く添える
+4. コメントが質問の場合：分かる範囲で答える、または「諸説あり」と添えて触れる
+5. 1〜3文・60〜120文字程度
+6. 古臭い言い回し（「あちゃー」「あらま」「いやはや」など）は禁止。現代の自然な口語で
+7. 「（笑）」「w」「ｗ」は禁止（馬鹿にしている印象を与える）。代わりに「😅」「😄」などの絵文字で柔らかさを表現
+8. 返信文のみを出力（「返信:」などの接頭辞や説明は不要）
+
+【口調の手がかり】
+- 過去返信例から、感嘆符（！）・絵文字（😄😅🙇など）・敬語レベル・文末表現を真似る
+- 自分流の表現を加えない。学んだ表現の組み合わせで返答する`;
+
+  try {
+    const model = localStorage.getItem('fmkk_claude_model') || 'claude-haiku-4-5';
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 500,
+        messages: [{role: 'user', content: prompt}],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HTTP ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const reply = data.content?.[0]?.text?.trim() || '';
+    document.getElementById(`reply_${commentId}`).value = reply;
+    const usage = data.usage;
+    // 料金（USD per million tokens）: Haiku 4.5 = $1/$5、Sonnet 4.5 = $3/$15
+    const isSonnet = model.includes('sonnet');
+    const inputRate = isSonnet ? 3 : 1;
+    const outputRate = isSonnet ? 15 : 5;
+    const cost = usage ? ((usage.input_tokens * inputRate + usage.output_tokens * outputRate) / 1000000 * 150).toFixed(2) : '?';
+    status.innerHTML = `<span style="color:#2a7">✅ 生成完了（入力${usage?.input_tokens || 0}/出力${usage?.output_tokens || 0}トークン・約¥${cost}）</span>`;
+  } catch (e) {
+    status.innerHTML = `<span style="color:#c33">❌ エラー: ${esc(e.message)}</span>`;
+  }
+}
+
+async function postReply(commentId) {
+  const com = STORE.comments.find(c => c['コメントID'] === commentId);
+  if (!com) return;
+  const text = document.getElementById(`reply_${commentId}`).value.trim();
+  if (!text) { alert('返信文を入力してください'); return; }
+  if (!confirm(`以下の内容で返信を送信します。よろしいですか？\n\n${text}`)) return;
+
+  const url = localStorage.getItem('fmkk_apps_url');
+  const token = localStorage.getItem('fmkk_reply_token');
+  if (!url) { alert('Apps Script URLが設定されていません'); return; }
+  if (!token) { alert('⚙️設定タブで投稿トークンを設定してください'); return; }
+
+  const status = document.getElementById(`aiStatus_${commentId}`);
+  status.innerHTML = '<span style="color:#888">📤 送信中...</span>';
+
+  try {
+    const params = new URLSearchParams({
+      action: 'reply',
+      token,
+      threadId: com['スレッドID'],
+      text,
+    });
+    const res = await fetch(url + '?' + params.toString());
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    status.innerHTML = `<span style="color:#2a7">✅ 返信を送信しました</span>`;
+    // ローカルで「返信済み」にマーク
+    com['返信済み'] = '済';
+    com['自分の返信'] = text;
+    setTimeout(() => renderComments(), 1500);
+  } catch (e) {
+    status.innerHTML = `<span style="color:#c33">❌ 送信失敗: ${esc(e.message)}</span>`;
+  }
+}
+
+loadSettings();
+renderAll();
+</script>
+</body>
+</html>
