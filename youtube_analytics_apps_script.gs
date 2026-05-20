@@ -209,7 +209,7 @@ function updateVideoList(videoIds, startDate, endDate) {
       formatPubDate(m.publishedAt),
       m.duration,
       a.views || 0,
-      formatHMS(a.avgDur || 0),
+      a.avgDur ? Math.round(a.avgDur) : 0,
       a.retention ? Number(a.retention).toFixed(2) : 0,
       a.views || 0,
       a.minutes ? (a.minutes / 60).toFixed(4) : 0,
@@ -297,7 +297,7 @@ function updateComments() {
     const idIdx = headers.indexOf('コンテンツ');
     const titleIdx = headers.indexOf('動画のタイトル');
     if (idIdx < 0) return;
-    const videos = videoData.slice(1).slice(0, 30).map(r => ({id: r[idIdx], title: r[titleIdx]})); // 直近30本に絞る
+    const videos = videoData.slice(1).map(r => ({id: r[idIdx], title: r[titleIdx]})); // 全動画を対象（旧30本制限を撤廃）
 
     videos.forEach(v => {
       try {

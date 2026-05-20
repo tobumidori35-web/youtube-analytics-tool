@@ -575,10 +575,20 @@ function getMetrics(v) {
 }
 function parseAvgTime(s) {
   if (!s) return 0;
-  const p = s.split(':').map(Number);
-  if (p.length === 3) return p[0]*3600 + p[1]*60 + p[2];
-  if (p.length === 2) return p[0]*60 + p[1];
-  return 0;
+  if (typeof s === 'number') return s;
+  s = String(s);
+  // Googleスプレッドシートが時刻型に変換してしまった日付文字列を救済（時は時差でずれるため分秒のみ採用）
+  if (s.includes('T') && s.includes('-')) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.getUTCMinutes()*60 + d.getUTCSeconds();
+  }
+  if (s.includes(':')) {
+    const p = s.split(':').map(Number);
+    if (p.length === 3) return p[0]*3600 + p[1]*60 + p[2];
+    if (p.length === 2) return p[0]*60 + p[1];
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
 }
 
 function destroyChart(key) { if (charts[key]) { charts[key].destroy(); delete charts[key]; } }
@@ -1177,6 +1187,31 @@ function getChannelContext() {
 }
 
 // ==================== Comments ====================
+// === 返信済み状態の永続化（再取得・リロードで消えないようにする）===
+function getRepliedMap() {
+  try { return JSON.parse(localStorage.getItem('fmkk_replied') || '{}'); }
+  catch (e) { return {}; }
+}
+function markReplied(id, text) {
+  const m = getRepliedMap();
+  m[id] = { text: text || '', at: new Date().toISOString() };
+  localStorage.setItem('fmkk_replied', JSON.stringify(m));
+}
+function markCommentReplied(commentId) {
+  const com = STORE.comments.find(c => c['コメントID'] === commentId);
+  markReplied(commentId, (com && com['自分の返信']) || '');
+  if (com) com['返信済み'] = '済';
+  renderComments();
+}
+function unmarkCommentReplied(commentId) {
+  const m = getRepliedMap();
+  delete m[commentId];
+  localStorage.setItem('fmkk_replied', JSON.stringify(m));
+  const com = STORE.comments.find(c => c['コメントID'] === commentId);
+  if (com) com['返信済み'] = '未';
+  renderComments();
+}
+
 function renderComments() {
   const c = document.getElementById('commentsContent');
   const sum = document.getElementById('commentsSummary');
@@ -1199,12 +1234,14 @@ function renderComments() {
 
   const unrepliedOnly = document.getElementById('filterUnreplied').checked;
   const videoFilter = videoSelect.value;
+  const repliedMap = getRepliedMap();
+  const isRep = com => com['返信済み'] === '済' || !!repliedMap[com['コメントID']];
   let list = STORE.comments.filter(c =>
-    (!unrepliedOnly || c['返信済み'] === '未') &&
+    (!unrepliedOnly || !isRep(c)) &&
     (!videoFilter || c['動画タイトル'] === videoFilter)
   );
 
-  const totalUnreplied = STORE.comments.filter(c => c['返信済み'] === '未').length;
+  const totalUnreplied = STORE.comments.filter(c => !isRep(c)).length;
   sum.textContent = `表示: ${list.length}件 / 全${STORE.comments.length}件 / 未返信${totalUnreplied}件`;
 
   if (!list.length) {
@@ -1215,7 +1252,8 @@ function renderComments() {
   let html = '';
   list.slice(0, 100).forEach((com, i) => {
     const id = com['コメントID'];
-    const isReplied = com['返信済み'] === '済';
+    const isReplied = isRep(com);
+    const myReply = com['自分の返信'] || (repliedMap[id] && repliedMap[id].text) || '';
     const cardClass = isReplied ? 'opacity:0.6;' : '';
     html += `<div class="insight-card" style="${cardClass}border-left-color:${isReplied ? '#888' : '#8b0000'}" data-comment-id="${id}">
       <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:12px;color:#888;margin-bottom:6px">
@@ -1224,15 +1262,18 @@ function renderComments() {
       </div>
       <div style="font-weight:bold;margin-bottom:4px">👤 ${esc(com['コメント主'])}</div>
       <div style="background:#f7f3e8;padding:10px;border-radius:4px;margin-bottom:10px;white-space:pre-wrap">${esc(com['本文'])}</div>
-      ${isReplied && com['自分の返信'] ? `<div style="background:#e8f4ee;padding:10px;border-radius:4px;margin-bottom:10px;font-size:13px"><strong>↪️ 自分の返信:</strong><br>${esc(com['自分の返信'])}</div>` : ''}
+      ${isReplied && myReply ? `<div style="background:#e8f4ee;padding:10px;border-radius:4px;margin-bottom:10px;font-size:13px"><strong>↪️ 自分の返信:</strong><br>${esc(myReply)}</div>` : ''}
       ${!isReplied ? `
         <textarea id="reply_${id}" placeholder="返信文（手動入力 or AI生成）" style="width:100%;min-height:80px;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:13px"></textarea>
         <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
           <button class="primary" onclick="generateAIReply('${id}')">🤖 AI返信案を生成</button>
           <button class="primary" style="background:#2a7" onclick="postReply('${id}')">📤 返信を送信</button>
+          <button class="primary" style="background:#888" onclick="markCommentReplied('${id}')">✅ 返信済みにする</button>
           <a href="${esc(com['コメントURL']||'')}" target="_blank" class="primary" style="background:#888;text-decoration:none;display:inline-block;padding:8px 14px">🎬 Studioで開く（❤️ハート用）</a>
         </div>
-      ` : ''}
+      ` : `
+        <div style="margin-top:8px"><button class="primary" style="background:#888;font-size:12px;padding:5px 12px" onclick="unmarkCommentReplied('${id}')">↩️ 未返信に戻す</button></div>
+      `}
       <div id="aiStatus_${id}" style="margin-top:8px;font-size:12px"></div>
     </div>`;
   });
@@ -1918,9 +1959,10 @@ async function postReply(commentId) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     status.innerHTML = `<span style="color:#2a7">✅ 返信を送信しました</span>`;
-    // ローカルで「返信済み」にマーク
+    // 「返信済み」をlocalStorageに永続保存（再取得・リロードでも消えない）
     com['返信済み'] = '済';
     com['自分の返信'] = text;
+    markReplied(commentId, text);
     setTimeout(() => renderComments(), 1500);
   } catch (e) {
     status.innerHTML = `<span style="color:#c33">❌ 送信失敗: ${esc(e.message)}</span>`;
